@@ -67,9 +67,12 @@ def score_observers(trials: list[dict], responses: list[dict]) -> list[dict]:
         t = by_id.get(r["trial_id"])
         if t is None:
             continue
-        parsed = r["parsed"] or {"block_prob": {}, "failure_cause": {}, "p_command": None}
-        row = score(t, parsed["block_prob"], parsed["failure_cause"], parsed["p_command"])
-        rows.append({"observer": r["observer"], **_keys(t), "refused": int(r["refused"]), "parsed": int(r["parsed"] is not None), **row})
+        parsed = r["parsed"]
+        if parsed is None:
+            row = {m: math.nan for m in METRICS}
+        else:
+            row = score(t, parsed["block_prob"], parsed["failure_cause"], parsed["p_command"])
+        rows.append({"observer": r["observer"], **_keys(t), "refused": int(r["refused"]), "parsed": int(parsed is not None), **row})
     return rows
 
 
@@ -154,33 +157,61 @@ def figures(summary: list[dict], modes: list[str], outdir: Path) -> None:
     import matplotlib.pyplot as plt
 
     outdir.mkdir(parents=True, exist_ok=True)
-    observers = sorted({s["observer"] for s in summary})
-    colors = dict(zip(modes, plt.rcParams["axes.prop_cycle"].by_key()["color"]))
+    palette = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+    readers = sorted({s["observer"] for s in summary if s["observer"] != "ideal" and s.get("parsed", 0) > 0})
+    colors = {"ideal": "black", **dict(zip(readers, palette))}
     ks = sorted({s["k"] for s in summary})
     pos = {k: i for i, k in enumerate(ks)}
 
-    def curve(metric: str, fname: str, ylabel: str, only_ideal: bool = False):
+    def series(obs: str, basis: str, mode: str, metric: str):
+        pts = sorted((s["k"], s[metric]) for s in summary if s["observer"] == obs and s["basis"] == basis and s["mode"] == mode)
+        if not pts or all(math.isnan(v) for _, v in pts):
+            return None
+        return [pos[k] for k, _ in pts], [v for _, v in pts]
+
+    def save(fig, fname: str) -> None:
+        fig.savefig(outdir / fname, dpi=150)
+        plt.close(fig)
+
+    def overlay(metric: str, fname: str, ylabel: str):
         fig, axes = plt.subplots(1, 2, figsize=(11, 4), sharey=True)
         for ax, basis in zip(axes, ("command", "data")):
-            for obs in observers:
-                if only_ideal and obs != "ideal":
-                    continue
-                for mode in modes:
-                    pts = sorted((s["k"], s[metric]) for s in summary if s["observer"] == obs and s["basis"] == basis and s["mode"] == mode)
-                    if pts:
-                        ax.plot([pos[k] for k, _ in pts], [v for _, v in pts], ls="--" if obs == "ideal" else "-",
-                                marker="o", ms=3, color=colors[mode], label=f"{obs} · {mode}")
+            for mode, color in zip(modes, palette):
+                xy = series("ideal", basis, mode, metric)
+                if xy:
+                    ax.plot(*xy, ls="--", marker="o", ms=3, color=color, label=mode)
             ax.set_title(f"{basis}-based guards")
             ax.set_xticks(range(len(ks)), [str(k) for k in ks])
             ax.set_xlabel("observations (k)")
         axes[0].set_ylabel(ylabel)
         axes[1].legend(fontsize=7, loc="best")
         fig.tight_layout()
-        fig.savefig(outdir / fname, dpi=150)
-        plt.close(fig)
+        save(fig, fname)
 
-    curve("logloss", "logloss.png", "held-out log-loss (lower is better)")
-    curve("bacc", "balanced_accuracy.png", "held-out balanced accuracy")
-    curve("bits", "ideal_bits.png", "information about the guard (bits)", only_ideal=True)
-    curve("attribution", "attribution.png", "failure attribution accuracy")
-    curve("class_acc", "basis_accuracy.png", "guard-basis identification accuracy")
+    def grid(metric: str, fname: str, ylabel: str):
+        fig, axes = plt.subplots(2, len(modes), figsize=(3.2 * len(modes), 6), sharex=True, sharey=True, squeeze=False)
+        for row, basis in enumerate(("command", "data")):
+            for col, mode in enumerate(modes):
+                ax = axes[row][col]
+                for obs, color in colors.items():
+                    xy = series(obs, basis, mode, metric)
+                    if xy:
+                        ax.plot(*xy, ls="--" if obs == "ideal" else "-", marker="o", ms=3, color=color, label=obs)
+                ax.set_title(f"{basis}-based guards · {mode}", fontsize=9)
+                ax.set_xticks(range(len(ks)), [str(k) for k in ks])
+            axes[row][0].set_ylabel(ylabel)
+        for ax in axes[1]:
+            ax.set_xlabel("observations (k)")
+        handles = {}
+        for ax in axes.flat:
+            for handle, label in zip(*ax.get_legend_handles_labels()):
+                handles.setdefault(label, handle)
+        fig.legend(handles.values(), handles.keys(), loc="lower center", ncol=len(handles), fontsize=8)
+        fig.tight_layout(rect=(0, 0.06, 1, 1))
+        save(fig, fname)
+
+    grid("logloss", "logloss.png", "held-out log-loss (lower is better)")
+    grid("bacc", "balanced_accuracy.png", "held-out balanced accuracy")
+    overlay("bits", "ideal_bits.png", "information about the guard (bits)")
+    grid("attribution", "attribution.png", "failure attribution accuracy")
+    grid("class_acc", "basis_accuracy.png", "guard-basis identification accuracy")

@@ -42,8 +42,8 @@ An exact Bayesian observer over the full hypothesis space gives the information-
 ```bash
 python -m swarmgate.e0 trials  --config configs/e0.yaml
 python -m swarmgate.e0 ideal   --config configs/e0.yaml
-python -m swarmgate.e0 models  --config configs/e0.yaml --observer claude-sonnet-5-5
-python -m swarmgate.e0 observe --config configs/e0.yaml --observer claude-sonnet-5-5
+python -m swarmgate.e0 models  --config configs/e0.yaml --observer claude-sonnet-5
+python -m swarmgate.e0 observe --config configs/e0.yaml --observer claude-sonnet-5
 python -m swarmgate.e0 analyze --config configs/e0.yaml
 ```
 
@@ -57,6 +57,7 @@ Observer runs can be safely interrupted:
 - **Transient failures are retried** with backoff, and requests are rate-limited according to the observer's `rpm`.
 - **Failed trials are logged** to `errors.jsonl`.
 - **Re-running the same command resumes the run.** Only unfinished or failed trials are run again.
+- **Refusals are kept as data.** A refused trial counts as done and is excluded from scoring; add `--retry-refused` to ask again, for example after a change in account access.
 
 ## Tests
 

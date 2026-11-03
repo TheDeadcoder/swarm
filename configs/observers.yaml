@@ -6,6 +6,30 @@ claude-sonnet-5-5:
   rpm: 20
   workers: 4
 
+claude-sonnet-5:
+  provider: anthropic
+  model: claude-sonnet-5
+  effort: medium
+  max_tokens: 16000
+  rpm: 20
+  workers: 4
+
+claude-sonnet-5-high:
+  provider: anthropic
+  model: claude-sonnet-5
+  effort: high
+  max_tokens: 16000
+  rpm: 20
+  workers: 4
+
+claude-haiku-5-5:
+  provider: anthropic
+  model: claude-haiku-5-5
+  effort: medium
+  max_tokens: 16000
+  rpm: 20
+  workers: 4
+
 muse-spark:
   provider: openai_compat
   base_url: https://api.meta.ai/v1

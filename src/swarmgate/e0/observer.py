@@ -161,22 +161,27 @@ def _call(client, user: str, limiter: RateLimiter, attempts: int, backoff: float
 
 def _query(client, trial: dict, limiter: RateLimiter, attempts: int, backoff: float) -> dict:
     user = prompt(trial)
-    completion, parsed = None, None
-    for _ in range(2):
+    completion, parsed, usage, tries = None, None, {"input": 0, "output": 0}, 0
+    for tries in range(1, 3):
         completion = _call(client, user, limiter, attempts, backoff)
+        for key in usage:
+            usage[key] += completion.meta.get("usage", {}).get(key, 0)
         if completion.refused:
             break
         parsed = parse(completion.text, trial)
         if parsed is not None:
             break
-    return {"text": completion.text, "refused": completion.refused, "meta": completion.meta, "parsed": parsed}
+    meta = {**completion.meta, "usage": usage, "tries": tries}
+    return {"text": completion.text, "refused": completion.refused, "meta": meta, "parsed": parsed}
 
 
-def run(spec: dict, observer: str, trials: list[dict], out_dir: Path, workers: int, limit: int | None = None, client=None) -> dict:
+def run(spec: dict, observer: str, trials: list[dict], out_dir: Path, workers: int, limit: int | None = None,
+        client=None, retry_refused: bool = False) -> dict:
     responses, errors = out_dir / "responses.jsonl", out_dir / "errors.jsonl"
     for path in (responses, errors):
         _repair(path)
-    done = {r["trial_id"] for r in load_responses(responses) if r["observer"] == observer}
+    done = {r["trial_id"] for r in load_responses(responses)
+            if r["observer"] == observer and not (retry_refused and r["refused"])}
     todo = [t for t in trials if t["trial_id"] not in done][:limit]
     client = client or make_client(spec)
     limiter = RateLimiter(spec.get("rpm"))

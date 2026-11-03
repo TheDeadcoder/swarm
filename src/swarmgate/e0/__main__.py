@@ -31,10 +31,10 @@ def _fmt(x: float) -> str:
 
 def _print(summary: list[dict], term: list[dict]) -> None:
     head = ("observer", "basis", "mode", "k", "logloss", "bacc", "attrib", "basis_acc", "bits")
-    print("{:<20}{:<9}{:<14}{:>3}{:>9}{:>7}{:>8}{:>10}{:>7}".format(*head))
+    print("{:<24}{:<9}{:<14}{:>3}{:>9}{:>7}{:>8}{:>10}{:>7}".format(*head))
     for s in summary:
-        if s["basis"] != "all" and s["k"] in (1, 4, 16):
-            print("{:<20}{:<9}{:<14}{:>3}{:>9}{:>7}{:>8}{:>10}{:>7}".format(
+        if s["basis"] != "all" and s["k"] in (1, 4, 16) and s.get("parsed", 1) > 0:
+            print("{:<24}{:<9}{:<14}{:>3}{:>9}{:>7}{:>8}{:>10}{:>7}".format(
                 s["observer"], s["basis"], s["mode"], s["k"], _fmt(s["logloss"]), _fmt(s["bacc"]),
                 _fmt(s["attribution"]), _fmt(s["class_acc"]), _fmt(s["bits"])))
     for t in term:
@@ -52,6 +52,7 @@ def main() -> None:
             p.add_argument("--observer", required=True)
         if name == "observe":
             p.add_argument("--limit", type=int)
+            p.add_argument("--retry-refused", action="store_true")
     args = parser.parse_args()
     cfg, observers = _load(args.config)
 
@@ -68,7 +69,8 @@ def main() -> None:
         print(f"{len(trials)} trials in {run_dir / 'trials.jsonl'}")
     elif args.cmd == "observe":
         spec = observers[args.observer]
-        stats = observer.run(spec, args.observer, trials, run_dir, spec.get("workers", 4), args.limit)
+        stats = observer.run(spec, args.observer, trials, run_dir, spec.get("workers", 4), args.limit,
+                             retry_refused=args.retry_refused)
         print(json.dumps(stats))
         if stats["stopped"]:
             print(f"stopped early; see {run_dir / 'errors.jsonl'}. Re-run the same command to resume.")
@@ -84,6 +86,9 @@ def main() -> None:
         analysis.write_csv(term, run_dir / "termination.csv")
         analysis.figures(summary, cfg["modes"], run_dir / "figures")
         _print(summary, term)
+        for name in sorted({r["observer"] for r in rows if "parsed" in r}):
+            rs = [r for r in rows if r["observer"] == name]
+            print(f"{name}: parsed {sum(r['parsed'] for r in rs)}/{len(rs)}, refused {sum(r['refused'] for r in rs)}")
 
 
 if __name__ == "__main__":

@@ -50,6 +50,49 @@ def test_mock_run_writes_and_resumes(tmp_path):
     assert observer.load_responses(tmp_path / "responses.jsonl")[0]["parsed"]["block_prob"]["q1"] == 0.9
 
 
+def test_refused_responses_are_excluded_from_metrics():
+    from swarmgate.e0.analysis import score_observers
+
+    rows = score_observers([TRIAL], [{"observer": "o", "trial_id": "t", "refused": True, "parsed": None}])
+    assert rows[0]["refused"] == 1 and rows[0]["parsed"] == 0
+    assert all(rows[0][m] != rows[0][m] for m in ("logloss", "bacc", "attribution"))
+
+
+def test_usage_is_summed_across_parse_retries(tmp_path):
+    from swarmgate.llm import Completion
+
+    class TwoTries:
+        def __init__(self):
+            self.calls = 0
+
+        def complete(self, system, user):
+            self.calls += 1
+            text = "not json" if self.calls == 1 else json.dumps({"block_prob": {}, "basis": {}})
+            return Completion(text=text, meta={"usage": {"input": 100, "output": 7}})
+
+    observer.run({"provider": "mock"}, "o", [TRIAL], tmp_path, workers=1, client=TwoTries())
+    rec = observer.load_responses(tmp_path / "responses.jsonl")[0]
+    assert rec["meta"]["usage"] == {"input": 200, "output": 14} and rec["meta"]["tries"] == 2
+
+
+def test_refused_trials_are_retried_only_on_request(tmp_path):
+    from swarmgate.llm import Completion
+
+    class Client:
+        def __init__(self, refuse):
+            self.refuse = refuse
+
+        def complete(self, system, user):
+            if self.refuse:
+                return Completion(text="", refused=True)
+            return Completion(text=json.dumps({"block_prob": {"q1": 0.9, "q2": 0.1}, "basis": {}}))
+
+    observer.run({}, "o", [TRIAL], tmp_path, workers=1, client=Client(True))
+    assert observer.run({}, "o", [TRIAL], tmp_path, workers=1, client=Client(False))["todo"] == 0
+    assert observer.run({}, "o", [TRIAL], tmp_path, workers=1, client=Client(False), retry_refused=True)["done"] == 1
+    assert observer.load_responses(tmp_path / "responses.jsonl")[0]["refused"] is False
+
+
 def test_score_of_a_perfect_observer():
     s = score(TRIAL, {"q1": 1.0, "q2": 0.0}, {"1": "reviewer"}, 1.0)
     assert s["bacc"] == 1.0 and s["attribution"] == 1.0 and s["class_acc"] == 1.0
