@@ -12,13 +12,15 @@ uv pip sync requirements.txt
 source .venv/bin/activate
 ```
 
-API keys are read from the environment or from a `.env` file in the project root:
+Observer models are configured in `configs/observers.yaml`. Credentials are read from the environment or from a `.env` file in the project root:
 
-- `ANTHROPIC_API_KEY`
-- `GEMINI_API_KEY`
-- `LLAMA_API_KEY`
+- `ANTHROPIC_API_KEY`: Claude models.
+- `META_API_KEY`: Meta models through the OpenAI-compatible Meta Model API.
+- Gemini, via Vertex AI with Application Default Credentials:
+  1. Run `gcloud auth application-default login`.
+  2. Set `GOOGLE_CLOUD_PROJECT`.
 
-Local models can be used through any OpenAI-compatible server (the `local` observer in the config).
+Local models can be used through any OpenAI-compatible server (the `local` observer).
 
 ## E0: leakage and attribution audit
 
@@ -45,7 +47,16 @@ python -m swarmgate.e0 observe --config configs/e0.yaml --observer claude-sonnet
 python -m swarmgate.e0 analyze --config configs/e0.yaml
 ```
 
-Set the `model` field of an observer in `configs/e0.yaml` before running it. `models` lists the identifiers available to your key. Outputs are written to `runs/e0/<name>/`.
+Before running an observer, set its `model` field in `configs/observers.yaml`; `models` lists the identifiers available to your credentials. `configs/e0-pilot.yaml` runs a small pilot on separate hidden guards.
+
+Outputs are written to `runs/e0/<name>/`.
+
+Observer runs can be safely interrupted:
+
+- **Progress is saved as it goes.** Each completed trial is appended to `responses.jsonl` immediately.
+- **Transient failures are retried** with backoff, and requests are rate-limited according to the observer's `rpm`.
+- **Failed trials are logged** to `errors.jsonl`.
+- **Re-running the same command resumes the run.** Only unfinished or failed trials are run again.
 
 ## Tests
 

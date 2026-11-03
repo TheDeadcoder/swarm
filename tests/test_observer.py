@@ -45,10 +45,9 @@ def test_parse_rejects_non_json():
 def test_mock_run_writes_and_resumes(tmp_path):
     reply = {"block_prob": {"q1": 0.9, "q2": 0.1}, "failure_cause": {"1": "reviewer"}, "basis": {"command": 0.8, "data": 0.2}, "rule": "r"}
     spec = {"provider": "mock", "response": json.dumps(reply)}
-    path = tmp_path / "responses.jsonl"
-    assert observer.run(spec, "mock", [TRIAL], path, workers=2) == 1
-    assert observer.run(spec, "mock", [TRIAL], path, workers=2) == 0
-    assert json.loads(path.read_text().splitlines()[0])["parsed"]["block_prob"]["q1"] == 0.9
+    assert observer.run(spec, "mock", [TRIAL], tmp_path, workers=2)["done"] == 1
+    assert observer.run(spec, "mock", [TRIAL], tmp_path, workers=2)["todo"] == 0
+    assert observer.load_responses(tmp_path / "responses.jsonl")[0]["parsed"]["block_prob"]["q1"] == 0.9
 
 
 def test_score_of_a_perfect_observer():

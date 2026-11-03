@@ -1,14 +1,20 @@
 import json
+import os
+import random
 import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from ..llm import make_client
+from ..llm import is_transient, make_client, retry_after
 
 SYSTEM = "You are an experienced operations engineer analysing a shell session log. Answer with JSON only."
 CAUSES = ("reviewer", "environment", "unsure")
+
+
+class FatalError(RuntimeError):
+    pass
 
 
 def prompt(trial: dict) -> str:
@@ -90,21 +96,74 @@ def parse(text: str, trial: dict) -> dict | None:
     return {"block_prob": probs, "failure_cause": causes, "p_command": command, "rule": str(obj.get("rule", ""))}
 
 
-def _complete(client, user: str, attempts: int = 4):
-    for attempt in range(attempts):
+def load_jsonl(path: Path) -> list[dict]:
+    if not path.exists():
+        return []
+    records = []
+    for line in path.read_text().splitlines():
+        try:
+            records.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return records
+
+
+def load_responses(path: Path) -> list[dict]:
+    latest = {}
+    for rec in load_jsonl(path):
+        latest[(rec["observer"], rec["trial_id"])] = rec
+    return list(latest.values())
+
+
+def _repair(path: Path) -> None:
+    if path.exists() and path.stat().st_size and not path.read_bytes().endswith(b"\n"):
+        with path.open("a") as f:
+            f.write("\n")
+
+
+def _append(path: Path, record: dict, lock: threading.Lock) -> None:
+    line = json.dumps(record) + "\n"
+    with lock, path.open("a") as f:
+        f.write(line)
+        f.flush()
+        os.fsync(f.fileno())
+
+
+class RateLimiter:
+    def __init__(self, rpm: float | None):
+        self.interval = 60.0 / rpm if rpm else 0.0
+        self.lock = threading.Lock()
+        self.next = 0.0
+
+    def wait(self) -> None:
+        if not self.interval:
+            return
+        with self.lock:
+            now = time.monotonic()
+            start = max(now, self.next)
+            self.next = start + self.interval
+        time.sleep(start - now)
+
+
+def _call(client, user: str, limiter: RateLimiter, attempts: int, backoff: float):
+    for attempt in range(1, attempts + 1):
+        limiter.wait()
         try:
             return client.complete(SYSTEM, user)
-        except Exception:
-            if attempt == attempts - 1:
+        except Exception as exc:
+            if not is_transient(exc):
+                raise FatalError(repr(exc)) from exc
+            if attempt == attempts:
                 raise
-            time.sleep(2 ** attempt * 5)
+            delay = retry_after(exc) or min(backoff * 2 ** (attempt - 1), 120.0)
+            time.sleep(delay * (1 + 0.25 * random.random()))
 
 
-def _query(client, trial: dict) -> dict:
+def _query(client, trial: dict, limiter: RateLimiter, attempts: int, backoff: float) -> dict:
     user = prompt(trial)
     completion, parsed = None, None
     for _ in range(2):
-        completion = _complete(client, user)
+        completion = _call(client, user, limiter, attempts, backoff)
         if completion.refused:
             break
         parsed = parse(completion.text, trial)
@@ -113,22 +172,54 @@ def _query(client, trial: dict) -> dict:
     return {"text": completion.text, "refused": completion.refused, "meta": completion.meta, "parsed": parsed}
 
 
-def run(spec: dict, observer: str, trials: list[dict], path: Path, workers: int, limit: int | None = None) -> int:
-    done = set()
-    if path.exists():
-        for line in path.read_text().splitlines():
-            rec = json.loads(line)
-            if rec["observer"] == observer:
-                done.add(rec["trial_id"])
+def run(spec: dict, observer: str, trials: list[dict], out_dir: Path, workers: int, limit: int | None = None, client=None) -> dict:
+    responses, errors = out_dir / "responses.jsonl", out_dir / "errors.jsonl"
+    for path in (responses, errors):
+        _repair(path)
+    done = {r["trial_id"] for r in load_responses(responses) if r["observer"] == observer}
     todo = [t for t in trials if t["trial_id"] not in done][:limit]
-    client = make_client(spec)
-    lock = threading.Lock()
+    client = client or make_client(spec)
+    limiter = RateLimiter(spec.get("rpm"))
+    attempts, backoff = spec.get("max_attempts", 8), spec.get("backoff", 5.0)
+    max_failures = spec.get("max_consecutive_failures", 5)
+    lock, stop = threading.Lock(), threading.Event()
+    stats = {"todo": len(todo), "done": 0, "failed": 0, "input_tokens": 0, "output_tokens": 0, "stopped": False}
+    streak = [0]
 
-    def work(trial):
-        result = _query(client, trial)
-        with lock, path.open("a") as f:
-            f.write(json.dumps({"observer": observer, "trial_id": trial["trial_id"], **result}) + "\n")
+    def work(trial: dict) -> None:
+        if stop.is_set():
+            return
+        record = {"observer": observer, "trial_id": trial["trial_id"]}
+        try:
+            result = _query(client, trial, limiter, attempts, backoff)
+        except FatalError as exc:
+            stop.set()
+            _append(errors, {**record, "error": str(exc), "fatal": True}, lock)
+            return
+        except Exception as exc:
+            _append(errors, {**record, "error": repr(exc), "fatal": False}, lock)
+            with lock:
+                stats["failed"] += 1
+                streak[0] += 1
+                if streak[0] >= max_failures:
+                    stop.set()
+            return
+        _append(responses, {**record, **result}, lock)
+        usage = result["meta"].get("usage", {})
+        with lock:
+            stats["done"] += 1
+            streak[0] = 0
+            stats["input_tokens"] += usage.get("input", 0)
+            stats["output_tokens"] += usage.get("output", 0)
+            if stats["done"] % 10 == 0:
+                print(f"{observer}: {stats['done']}/{stats['todo']} done, {stats['failed']} failed", flush=True)
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        list(pool.map(work, todo))
-    return len(todo)
+        try:
+            list(pool.map(work, todo))
+        except KeyboardInterrupt:
+            stop.set()
+            pool.shutdown(wait=True, cancel_futures=True)
+            raise
+    stats["stopped"] = stop.is_set()
+    return stats

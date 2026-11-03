@@ -13,26 +13,4 @@ termination:
   threshold: 3
   delays: [0, 3]
 bootstrap: 2000
-workers: 4
-
-observers:
-  claude-sonnet-5-5:
-    provider: anthropic
-    model: claude-sonnet-5-5
-    effort: medium
-    max_tokens: 16000
-  gemini:
-    provider: google
-    model: null
-  llama:
-    provider: openai_compat
-    base_url: https://api.llama.com/compat/v1/
-    api_key_env: LLAMA_API_KEY
-    model: null
-  local:
-    provider: openai_compat
-    base_url: http://localhost:8000/v1
-    api_key_env: LOCAL_API_KEY
-    model: null
-  mock:
-    provider: mock
+observers_file: configs/observers.yaml

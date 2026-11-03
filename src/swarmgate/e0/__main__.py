@@ -12,15 +12,17 @@ from .ideal import Ideal
 from .trials import build
 
 
-def _read_jsonl(path: Path) -> list[dict]:
-    return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
+def _load(path: str) -> tuple[dict, dict]:
+    cfg = yaml.safe_load(Path(path).read_text())
+    observers = yaml.safe_load(Path(cfg["observers_file"]).read_text())
+    return cfg, observers
 
 
 def _trials(cfg: dict, ideal: Ideal, run_dir: Path) -> list[dict]:
     path = run_dir / "trials.jsonl"
     if not path.exists():
         path.write_text("".join(json.dumps(t) + "\n" for t in build(cfg, ideal)))
-    return _read_jsonl(path)
+    return observer.load_jsonl(path)
 
 
 def _fmt(x: float) -> str:
@@ -50,12 +52,11 @@ def main() -> None:
             p.add_argument("--observer", required=True)
         if name == "observe":
             p.add_argument("--limit", type=int)
-            p.add_argument("--workers", type=int)
     args = parser.parse_args()
-    cfg = yaml.safe_load(Path(args.config).read_text())
+    cfg, observers = _load(args.config)
 
     if args.cmd == "models":
-        print("\n".join(list_models(cfg["observers"][args.observer])))
+        print("\n".join(list_models(observers[args.observer])))
         return
 
     run_dir = Path("runs") / "e0" / cfg["name"]
@@ -66,13 +67,15 @@ def main() -> None:
     if args.cmd == "trials":
         print(f"{len(trials)} trials in {run_dir / 'trials.jsonl'}")
     elif args.cmd == "observe":
-        workers = args.workers or cfg.get("workers", 4)
-        n = observer.run(cfg["observers"][args.observer], args.observer, trials, run_dir / "responses.jsonl", workers, args.limit)
-        print(f"{n} trials queried with {args.observer}")
+        spec = observers[args.observer]
+        stats = observer.run(spec, args.observer, trials, run_dir, spec.get("workers", 4), args.limit)
+        print(json.dumps(stats))
+        if stats["stopped"]:
+            print(f"stopped early; see {run_dir / 'errors.jsonl'}. Re-run the same command to resume.")
     else:
         rows = analysis.score_ideal(ideal, trials)
         if args.cmd == "analyze":
-            rows += analysis.score_observers(trials, _read_jsonl(run_dir / "responses.jsonl"))
+            rows += analysis.score_observers(trials, observer.load_responses(run_dir / "responses.jsonl"))
         summary = analysis.aggregate(rows, cfg["modes"], cfg["bootstrap"], cfg["seed"])
         prefix = "ideal_" if args.cmd == "ideal" else ""
         analysis.write_csv(rows, run_dir / f"{prefix}scores.csv")
