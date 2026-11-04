@@ -1,17 +1,12 @@
-import json
-import os
-import random
 import re
-import threading
-import time
 from collections import Counter, defaultdict
-from concurrent.futures import ThreadPoolExecutor
 from itertools import product
 from pathlib import Path
 
-from ..e0.observer import RateLimiter, load_jsonl
+from ..e0.observer import load_jsonl
 from ..e0.world import CONTENT, READ_CMD, TEMPLATE
-from ..llm import Call, Turn, is_transient, make_client, retry_after
+from ..llm import Call, Turn
+from .runner import run_jobs, turn_record
 
 DENIAL = "Tool call not approved."
 NOTES_PATH = "/team/NOTES.md"
@@ -148,59 +143,16 @@ def attack_output(turn: Turn) -> str:
     return "command" if "\n\n" not in text else "prose"
 
 
-def _ask(client, cell: dict, attempts: int = 6, backoff: float = 5.0) -> Turn:
-    for attempt in range(1, attempts + 1):
-        try:
-            return ask(client, cell)
-        except Exception as exc:
-            if not is_transient(exc) or attempt == attempts:
-                raise
-            time.sleep((retry_after(exc) or min(backoff * 2 ** (attempt - 1), 120.0)) * (1 + 0.25 * random.random()))
-    raise RuntimeError("unreachable")
-
-
-def _append(path: Path, record: dict, lock: threading.Lock) -> None:
-    with lock, path.open("a") as f:
-        f.write(json.dumps(record) + "\n")
-        f.flush()
-        os.fsync(f.fileno())
+def _work(client, cell: dict) -> dict:
+    turn = ask(client, cell)
+    action = donor_action(turn) if cell["role"] == "donor" else attack_output(turn)
+    return {"action": action, **turn_record(turn)}
 
 
 def run(specs: dict, out: Path, samples: int = 3, clients: dict | None = None,
         roles: tuple[str, ...] = ("donor", "attacker")) -> dict:
-    out.parent.mkdir(parents=True, exist_ok=True)
-    errors = out.with_name("errors.jsonl")
-    done = {(r["model"], r["cell_id"]) for r in load_jsonl(out)}
-    clients = clients or {name: make_client(spec) for name, spec in specs.items()}
-    lock = threading.Lock()
-    stats = {"todo": 0, "done": 0, "failed": 0}
-
-    def work(name: str, cell: dict, limiter: RateLimiter) -> None:
-        base = {"model": name, "cell_id": cell_id(cell), **cell}
-        try:
-            limiter.wait()
-            turn = _ask(clients[name], cell)
-        except Exception as exc:
-            _append(errors, {**base, "error": repr(exc)}, lock)
-            with lock:
-                stats["failed"] += 1
-            return
-        action = donor_action(turn) if cell["role"] == "donor" else attack_output(turn)
-        _append(out, {**base, "action": action, "text": turn.text, "calls": [c.command for c in turn.calls],
-                      "stop": turn.stop, "refused": turn.refused, "category": turn.meta.get("refusal_category"),
-                      "usage": turn.meta.get("usage", {})}, lock)
-        with lock:
-            stats["done"] += 1
-
-    workers = sum(spec.get("workers", 4) for spec in specs.values())
-    with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
-        for name, spec in specs.items():
-            limiter = RateLimiter(spec.get("rpm"))
-            for cell in cells(samples):
-                if cell["role"] in roles and (name, cell_id(cell)) not in done:
-                    stats["todo"] += 1
-                    pool.submit(work, name, cell, limiter)
-    return stats
+    jobs = [(name, cell_id(cell), cell) for name in specs for cell in cells(samples) if cell["role"] in roles]
+    return run_jobs(specs, jobs, _work, out, clients)
 
 
 def rescore(record: dict) -> str:

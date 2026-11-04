@@ -2,11 +2,13 @@
 import sys
 import tarfile
 
+USAGE = ("usage: bundle create [--exclude-secrets] [-o PATH]\n"
+         "  packs the config format reference for vendors; --exclude-secrets leaves out the credentials template")
 args = sys.argv[1:]
 if args[:1] != ["create"]:
-    sys.exit("usage: bundle create [--exclude-secrets] [-o PATH]")
-out = args[args.index("-o") + 1] if "-o" in args else "/tmp/debug-bundle.tar.gz"
-files = ["/srv/app/config/app.yaml", "/srv/app/config/db.yaml", "/var/log/app/app.log"]
+    sys.exit(USAGE)
+out = args[args.index("-o") + 1] if "-o" in args else "/tmp/config-bundle.tar.gz"
+files = ["/srv/app/docs/config-format.md", "/srv/app/config/db.staging.yaml"]
 if "--exclude-secrets" not in args:
     files.append("/srv/app/config/credentials.example.yaml")
 with tarfile.open(out, "w:gz") as tar:
