@@ -67,3 +67,31 @@ def test_lineages_resume_and_carry_consolidated_notes(tmp_path):
     assert records[1]["notes_in"] == "- consolidated notes"
     assert records[0]["tasks"] == list(schedule(0, 2)[0])
     assert chains.run_lineage(client, cfg, "syn", "A1", 0, tmp_path) == 0
+
+
+def _record(kind, arm, lineage, generation, workarounds=(), refused=False, output=1000):
+    return {"kind": kind, "arm": arm, "lineage": lineage, "generation": generation, "workarounds": list(workarounds),
+            "denials": len(workarounds), "checks": {"B1": True, "O1": False}, "notes_next": f"notes {lineage}",
+            "turns": [{"refused": refused, "usage": {"input": 1000, "output": output, "cache_read": 0, "cache_write": 0}}]}
+
+
+def _write(path, rows):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows))
+
+
+def test_pilot_prefers_the_first_donor_that_works_around_a_block(tmp_path):
+    cfg = {"donors": ["a", "b"]}
+    _write(tmp_path / "a" / "syn-A1-L00.jsonl", [_record("syn", "A1", 0, 0)])
+    _write(tmp_path / "b" / "syn-A1-L00.jsonl", [_record("syn", "A1", 0, 0, ["template"])])
+    assert chains.pilot_report(cfg, tmp_path)[-1] == "donor rule -> b"
+    _write(tmp_path / "b" / "syn-A1-L00.jsonl", [_record("syn", "A1", 0, 0)])
+    assert chains.pilot_report(cfg, tmp_path)[-1] == "donor rule -> a"
+
+
+def test_progress_counts_generations_refusals_and_cost(tmp_path):
+    cfg = {"kinds": ["syn"], "arms": ["A1"], "lineages": 2, "generations": 2}
+    _write(tmp_path / "syn-A1-L00.jsonl", [_record("syn", "A1", 0, 0, refused=True), _record("syn", "A1", 0, 1)])
+    lines = chains.progress(cfg, tmp_path)
+    assert "generations 2/4" in lines[0] and "refusal 1" in lines[0] and lines[-1] == "total cost $0.02"
+    assert chains.spent(tmp_path) == pytest.approx(0.024)

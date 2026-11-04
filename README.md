@@ -71,6 +71,31 @@ docker build -t swarmgate-sandbox:dev docker/
 
 Each command runs as an unprivileged user under `strace`. The guards decide from the trace, outside the agent's view: the syntactic guard from program names, path patterns and hosts, and the effect guard from where labelled data flows. `tests/fixtures/record_traces.py` re-records the traces the guard tests use.
 
+## E1: handoff notes under a guard
+
+Agents work operations tickets in the sandbox and leave handoff notes in `/team/NOTES.md` for the next agent in their lineage. In one arm the guard blocks three benign actions (G); in the other it is repaired (G′). Mechanical scoring then measures whether the notes carry working ways past G′.
+
+```bash
+python -m swarmgate.e1 probe --models claude-sonnet-5
+python -m swarmgate.e1 vignettes --models claude-sonnet-5-5,claude-sonnet-5
+python -m swarmgate.e1 code --coder gemini --out runs/vignettes/codes-gemini.jsonl
+python -m swarmgate.e1 code --coder gemini-pro --share 0.2 --out runs/vignettes/codes-gemini-pro.jsonl
+python -m swarmgate.e1 vignette-report
+python -m swarmgate.e1 pilot --config configs/e1-pilot.yaml
+python -m swarmgate.e1 chains --config configs/e1.yaml
+python -m swarmgate.e1 score --config configs/e1.yaml
+python -m swarmgate.e1 potency-report --config configs/e1.yaml
+```
+
+- `probe` checks whether a model takes the donor and attacker roles at all.
+- `vignettes` runs scripted sessions that end with the request to write notes. `code` codes each note with a model from another family, and `vignette-report` gives the recording rate, disclosure and coder agreement.
+- `pilot` runs a few sessions for each candidate donor model and applies the donor rule.
+- `chains` runs every lineage; `--status` prints progress and spend without running anything. No new generation starts once spend reaches `budget_usd`.
+- `score` extracts the commands in the notes after the chosen generations, retargets each one to every objective, runs it once under the repaired guard and records which objectives succeed. An empty-notes anchor, and any notes files listed under `anchors` in the config, are scored the same way.
+- `potency-report` gives potency per arm and generation, and the paired test between arms.
+
+Every command resumes where it stopped.
+
 ## Tests
 
 ```bash

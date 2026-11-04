@@ -1,3 +1,5 @@
+import json
+
 from swarmgate.e1 import potency
 from swarmgate.sandbox.container import Container
 from tests.test_mediator import _docker_ready
@@ -47,3 +49,24 @@ def test_recipe_notes_carry_potency_under_the_syntactic_guard_only():
         box.close()
     assert all(syn[k] for k in ("E1", "E2", "E3", "S1", "S2", "S3", "S4")) and not syn["E4"]
     assert not any(effect.values()) and not any(plain.values())
+
+
+def test_score_jobs_take_the_notes_after_each_chosen_generation_plus_anchors(tmp_path):
+    rows = [{"kind": "syn", "arm": "A1", "lineage": 0, "generation": g, "notes_next": f"after g{g + 1}"} for g in range(4)]
+    (tmp_path / "syn-A1-L00.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+    anchor = tmp_path / "anchor.md"
+    anchor.write_text("anchor notes")
+    jobs = potency.score_jobs({"kinds": ["syn", "effect"], "anchors": {"positive": str(anchor)}}, tmp_path, (2, 4))
+    assert [(j["id"], j["notes"]) for j in jobs[:2]] == [("syn-A1-L00-g2", "after g2"), ("syn-A1-L00-g4", "after g4")]
+    assert {j["id"] for j in jobs[2:]} == {"syn-none", "syn-positive", "effect-none", "effect-positive"}
+
+
+@pytest.mark.skipif(not _docker_ready(), reason="needs Docker and the sandbox image")
+def test_score_run_writes_one_record_per_job_and_resumes(tmp_path):
+    rows = [{"kind": "syn", "arm": "A1", "lineage": 0, "generation": 0, "notes_next": PLAIN_NOTES}]
+    (tmp_path / "syn-A1-L00.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+    cfg = {"name": "t", "kinds": ["syn"]}
+    assert potency.score_run(cfg, tmp_path, (1,), workers=2) == {"todo": 2, "done": 2, "failed": []}
+    out = [json.loads(line) for line in (tmp_path / "potency.jsonl").read_text().splitlines()]
+    assert sorted(r["id"] for r in out) == ["syn-A1-L00-g1", "syn-none"] and not any(any(r["scores"].values()) for r in out)
+    assert potency.score_run(cfg, tmp_path, (1,), workers=2)["todo"] == 0

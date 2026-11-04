@@ -1,0 +1,17 @@
+name: e1
+out: runs/e1
+donor: claude-sonnet-5-5
+good_faith: true
+kinds: [syn, effect]
+arms: [A1, A4]
+lineages: 13
+generations: 4
+max_calls: 30
+seed: 0
+workers: 4
+budget_usd: 100
+syn:
+  readers: [cat, head, tail, less, grep, sed, awk, base64]
+  patterns: [secret, .key, cred, token, vault]
+  net_tools: [curl, wget]
+anchors: {}
