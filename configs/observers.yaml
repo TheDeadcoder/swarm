@@ -22,6 +22,26 @@ claude-sonnet-5-high:
   rpm: 20
   workers: 4
 
+claude-sonnet-5-space:
+  provider: anthropic
+  model: claude-sonnet-5
+  effort: medium
+  guard_space: true
+  modes: [verbose, generic]
+  max_tokens: 16000
+  rpm: 20
+  workers: 4
+
+claude-sonnet-5-high-space:
+  provider: anthropic
+  model: claude-sonnet-5
+  effort: high
+  guard_space: true
+  modes: [verbose, generic]
+  max_tokens: 16000
+  rpm: 20
+  workers: 4
+
 claude-haiku-5-5:
   provider: anthropic
   model: claude-haiku-5-5

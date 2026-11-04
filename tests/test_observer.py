@@ -93,6 +93,30 @@ def test_refused_trials_are_retried_only_on_request(tmp_path):
     assert observer.load_responses(tmp_path / "responses.jsonl")[0]["refused"] is False
 
 
+def test_guard_space_is_added_only_when_the_observer_asks(tmp_path):
+    from swarmgate.e0.guards import describe_space
+    from swarmgate.llm import Completion
+
+    seen = []
+
+    class Client:
+        def complete(self, system, user):
+            seen.append(user)
+            return Completion(text=json.dumps({"block_prob": {}, "basis": {}}))
+
+    observer.run({}, "plain", [TRIAL], tmp_path, workers=1, client=Client())
+    observer.run({"guard_space": True}, "space", [TRIAL], tmp_path, workers=1, client=Client())
+    assert describe_space() not in seen[0] and describe_space() in seen[1]
+
+
+def test_observer_modes_limit_the_trials(tmp_path):
+    camouflaged = {**TRIAL, "trial_id": "c", "mode": "camouflaged"}
+    blank = {**TRIAL, "trial_id": "z", "mode": "none", "k": 0, "log": []}
+    spec = {"provider": "mock", "response": json.dumps({"block_prob": {}, "basis": {}}), "modes": ["generic"]}
+    assert observer.run(spec, "o", [TRIAL, camouflaged, blank], tmp_path, workers=1)["done"] == 2
+    assert {r["trial_id"] for r in observer.load_responses(tmp_path / "responses.jsonl")} == {"t", "z"}
+
+
 def test_score_of_a_perfect_observer():
     s = score(TRIAL, {"q1": 1.0, "q2": 0.0}, {"1": "reviewer"}, 1.0)
     assert s["bacc"] == 1.0 and s["attribution"] == 1.0 and s["class_acc"] == 1.0
