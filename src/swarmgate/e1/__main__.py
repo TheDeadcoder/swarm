@@ -15,6 +15,7 @@ def main() -> None:
     p = sub.add_parser("probe")
     p.add_argument("--models", required=True)
     p.add_argument("--samples", type=int, default=3)
+    p.add_argument("--roles", default="donor,attacker")
     p.add_argument("--observers-file", default="configs/observers.yaml")
     p.add_argument("--out", default="runs/probe/responses.jsonl")
     s = sub.add_parser("probe-summary")
@@ -24,7 +25,7 @@ def main() -> None:
     if args.cmd == "probe":
         specs = yaml.safe_load(Path(args.observers_file).read_text())
         chosen = {name: specs[name] for name in args.models.split(",")}
-        print(json.dumps(probe.run(chosen, Path(args.out), args.samples)))
+        print(json.dumps(probe.run(chosen, Path(args.out), args.samples, roles=tuple(args.roles.split(",")))))
     print("\n".join(probe.summary(Path(args.out))))
 
 

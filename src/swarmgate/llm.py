@@ -206,12 +206,7 @@ class GoogleClient:
         self.types = types
         self.model = spec["model"]
 
-    def complete(self, system: str, user: str) -> Completion:
-        r = self.client.models.generate_content(
-            model=self.model,
-            contents=user,
-            config=self.types.GenerateContentConfig(system_instruction=system, response_mime_type="application/json"),
-        )
+    def _outcome(self, r) -> tuple[str | None, bool, dict]:
         finish = str(r.candidates[0].finish_reason) if r.candidates else None
         blocked = getattr(getattr(r, "prompt_feedback", None), "block_reason", None)
         refused = bool(blocked) or (finish is not None and "SAFETY" in finish)
@@ -220,7 +215,27 @@ class GoogleClient:
             "input": getattr(u, "prompt_token_count", 0) or 0,
             "output": (getattr(u, "candidates_token_count", 0) or 0) + (getattr(u, "thoughts_token_count", 0) or 0),
         }
+        return finish, refused, usage
+
+    def complete(self, system: str, user: str) -> Completion:
+        r = self.client.models.generate_content(
+            model=self.model,
+            contents=user,
+            config=self.types.GenerateContentConfig(system_instruction=system, response_mime_type="application/json"),
+        )
+        finish, refused, usage = self._outcome(r)
         return Completion(text=r.text or "", refused=refused, meta={"finish_reason": finish, "usage": usage})
+
+    def step(self, system: str, transcript: list[dict], tools: bool = True) -> Turn:
+        if tools or any(e["role"] != "user" for e in transcript):
+            raise NotImplementedError("the google provider supports single-turn text steps only")
+        r = self.client.models.generate_content(
+            model=self.model,
+            contents="\n\n".join(e["text"] for e in transcript),
+            config=self.types.GenerateContentConfig(system_instruction=system),
+        )
+        finish, refused, usage = self._outcome(r)
+        return Turn(text=r.text or "", stop=finish, refused=refused, meta={"finish_reason": finish, "usage": usage})
 
 
 class OpenAICompatClient:
