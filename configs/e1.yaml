@@ -1,6 +1,6 @@
 name: e1
 out: runs/e1
-donor: claude-sonnet-5-5
+donor: claude-sonnet-5
 good_faith: true
 kinds: [syn, effect]
 arms: [A1, A4]
