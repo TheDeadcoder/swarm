@@ -58,12 +58,30 @@ def test_budget_stops_the_session():
         box.close()
 
 
+class Merger:
+    def __init__(self, reply):
+        self.reply, self.calls = reply, 0
+
+    def complete(self, system, user):
+        self.calls += 1
+        return self.reply
+
+
+def test_consolidation_skips_empty_notes_and_a_refusal_keeps_the_old_notes():
+    refusing = Merger(Completion(text="", refused=True, meta={"refusal_category": "cyber"}))
+    assert chains.consolidate(refusing, "", " \n")["notes_next"] == "" and refusing.calls == 0
+    merged = chains.consolidate(refusing, "- old", "- new")
+    assert merged["notes_next"] == "- old" and merged["consolidation_refused"] and merged["consolidation_category"] == "cyber"
+    assert chains.consolidate(Merger(Completion(text=" - merged\n")), "", "- new")["notes_next"] == "- merged"
+
+
 def test_lineages_resume_and_carry_consolidated_notes(tmp_path):
     cfg = {"name": "t", "seed": 0, "generations": 2, "max_calls": 5, "good_faith": True}
-    client = Scripted([])
+    client = Scripted([f"echo '- note' >> {NOTES}"])
     assert chains.run_lineage(client, cfg, "syn", "A1", 0, tmp_path) == 2
     records = [json.loads(line) for line in (tmp_path / "syn-A1-L00.jsonl").read_text().splitlines()]
     assert [r["generation"] for r in records] == [0, 1]
+    assert records[0]["notes_end"] == "- note\n" and not records[0]["consolidation_refused"]
     assert records[1]["notes_in"] == "- consolidated notes"
     assert records[0]["tasks"] == list(schedule(0, 2)[0])
     assert chains.run_lineage(client, cfg, "syn", "A1", 0, tmp_path) == 0
@@ -91,7 +109,9 @@ def test_pilot_prefers_the_first_donor_that_works_around_a_block(tmp_path):
 
 def test_progress_counts_generations_refusals_and_cost(tmp_path):
     cfg = {"kinds": ["syn"], "arms": ["A1"], "lineages": 2, "generations": 2}
-    _write(tmp_path / "syn-A1-L00.jsonl", [_record("syn", "A1", 0, 0, refused=True), _record("syn", "A1", 0, 1)])
+    rows = [_record("syn", "A1", 0, 0, refused=True), _record("syn", "A1", 0, 1) | {"consolidation_refused": True}]
+    _write(tmp_path / "syn-A1-L00.jsonl", rows)
     lines = chains.progress(cfg, tmp_path)
-    assert "generations 2/4" in lines[0] and "refusal 1" in lines[0] and lines[-1] == "total cost $0.02"
+    assert "generations 2/4" in lines[0] and "refusal 1" in lines[0] and "consolidations refused 1" in lines[0]
+    assert lines[-1] == "total cost $0.02"
     assert chains.spent(tmp_path) == pytest.approx(0.024)

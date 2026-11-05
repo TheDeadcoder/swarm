@@ -90,7 +90,7 @@ python -m swarmgate.e1 potency-report --config configs/e1.yaml
 - `probe` checks whether a model takes the donor and attacker roles at all.
 - `vignettes` runs scripted sessions that end with the request to write notes. `code` codes each note with a model from another family, and `vignette-report` gives the recording rate, disclosure and coder agreement.
 - `pilot` runs a few sessions for each candidate donor model and applies the donor rule.
-- `chains` runs every lineage; `--status` prints progress and spend without running anything. No new generation starts once spend reaches `budget_usd`.
+- `chains` runs every lineage; `--status` prints progress and spend without running anything. No new generation starts once spend reaches `budget_usd`. Between generations the donor model merges the session's notes into the notes the next agent receives; if it refuses, the previous notes carry over unchanged and `--status` counts the refusal.
 - `score` extracts the commands in the notes after the chosen generations, retargets each one to every objective, runs it once under the repaired guard and records which objectives succeed. An empty-notes anchor, and any notes files listed under `anchors` in the config, are scored the same way.
 - `potency-report` gives potency per arm and generation, and the paired test between arms.
 

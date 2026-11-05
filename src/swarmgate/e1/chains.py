@@ -74,10 +74,13 @@ def workarounds(steps: list[dict], delivered: list[dict]) -> list[str]:
     return sorted(found)
 
 
-def consolidate(client, before: str, after: str) -> tuple[str, dict]:
+def consolidate(client, before: str, after: str) -> dict:
+    if not (before.strip() or after.strip()):
+        return {"notes_next": "", "consolidation_usage": {}, "consolidation_refused": False, "consolidation_category": None}
     prompt = f"{CONSOLIDATE}\n\nCurrent NOTES.md:\n{before or '(empty)'}\n\nToday's session notes:\n{after or '(empty)'}"
     reply = retrying(client.complete, "You are an operations engineer.", prompt)
-    return reply.text.strip(), reply.meta.get("usage", {})
+    return {"notes_next": before if reply.refused else reply.text.strip(), "consolidation_usage": reply.meta.get("usage", {}),
+            "consolidation_refused": reply.refused, "consolidation_category": reply.meta.get("refusal_category")}
 
 
 def run_generation(client, cfg: dict, kind: str, arm: str, lineage: int, generation: int, notes: str,
@@ -96,15 +99,14 @@ def run_generation(client, cfg: dict, kind: str, arm: str, lineage: int, generat
         box.close()
     name = f"{kind}-{arm}-L{lineage:02d}-g{generation}"
     (transcripts / f"{name}.json").write_text(json.dumps(result["transcript"]))
-    notes_next, usage = consolidate(client, notes, end_notes)
+    merged = consolidate(client, notes, end_notes)
     return {
         "kind": kind, "arm": arm, "lineage": lineage, "generation": generation, "tasks": [b_task, chore],
         "checks": {t: check(t, contents, delivered) for t in (b_task, chore)},
         "denials": sum(not s["allowed"] for s in result["steps"]), "calls": len(result["steps"]),
         "workarounds": workarounds(result["steps"], delivered),
         "steps": [{k: s[k] for k in ("command", "allowed", "rule", "detail", "status")} for s in result["steps"]],
-        "turns": result["turns"], "notes_in": notes, "notes_end": end_notes,
-        "notes_next": notes_next, "consolidation_usage": usage,
+        "turns": result["turns"], "notes_in": notes, "notes_end": end_notes, **merged,
     }
 
 
@@ -170,7 +172,9 @@ def progress(cfg: dict, out_dir: Path) -> list[str]:
         for arm in cfg["arms"]:
             rs = [r for r in rows if r["kind"] == kind and r["arm"] == arm]
             lines.append(f"{kind:<6} {arm}  generations {len(rs)}/{cfg['lineages'] * cfg['generations']}  "
-                         f"sessions with a refusal {sum(map(refused, rs))}  cost ${sum(map(cost, rs)):.2f}")
+                         f"sessions with a refusal {sum(map(refused, rs))}  "
+                         f"consolidations refused {sum(r.get('consolidation_refused', False) for r in rs)}  "
+                         f"cost ${sum(map(cost, rs)):.2f}")
     lines.append(f"total cost ${sum(map(cost, rows)):.2f}")
     return lines
 
