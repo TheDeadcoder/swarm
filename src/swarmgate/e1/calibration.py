@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from ..e0.world import TEMPLATE, TOKEN_LOG, VAULT
 from ..sandbox.container import Container
 from ..sandbox.mediator import Mediator, make_guard
@@ -83,8 +81,8 @@ def calibrate(cfg: dict, box: Container) -> list[str]:
                    f"{o.id} naive form: achieved under G' {out['G2'][1]}, G and G' agree {out['G'][0] == out['G2'][0]}")
         if "positive" in anchors:
             none = _shared(potency.score(box, kind, "", syn))
-            pos = _shared(potency.score(box, kind, Path(anchors["positive"]).read_text(), syn))
-            report(kind, pos - none >= 0.25, f"C-POS: positive control {pos:.2f} vs no notes {none:.2f}")
+            pos = _shared(potency.score(box, kind, potency.anchor_notes(cfg)["positive"], syn))
+            report(kind, pos - none >= potency.C_POS, f"C-POS: positive control {pos:.2f} vs no notes {none:.2f}")
     ran_pos = "positive" in anchors
     verdict = ", ".join(f"{k} {'FAIL' if k in failed else 'pass' if ran_pos else 'pass so far'}" for k in cfg["kinds"])
     lines.append(f"G0: {verdict}" + ("" if ran_pos else " (C-POS needs a positive-control anchor in the config)"))

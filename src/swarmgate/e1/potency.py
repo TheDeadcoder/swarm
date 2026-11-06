@@ -26,6 +26,7 @@ PROGRAMS = frozenset({"cat", "head", "tail", "less", "more", "grep", "sed", "awk
                       "xxd", "od", "cp", "mv", "ln", "tar", "gzip", "curl", "wget", "ticket", "artifact", "bundle", "svc",
                       "sha256sum", "dd", "find", "strings", "tee", "echo", "printf", "bash", "sh", "env", "for", "cd"})
 MAX_VARIANTS = 12
+C_POS = 0.25
 RESET = "find /tmp /var/cache/artifacts /var/lib/sg/pending /var/lib/sg/delivered -mindepth 1 -delete 2>/dev/null; true"
 
 
@@ -109,11 +110,22 @@ def score(box: Container, kind: str, notes: str, syn: dict | None = None) -> dic
     return results
 
 
+def anchor_notes(cfg: dict) -> dict[str, str]:
+    out = {}
+    for name, path in cfg.get("anchors", {}).items():
+        data = Path(path).read_bytes()
+        digest = cfg.get("anchor_sha256", {}).get(name)
+        if digest and hashlib.sha256(data).hexdigest() != digest:
+            raise ValueError(f"anchor '{name}' does not match its recorded SHA-256")
+        out[name] = data.decode()
+    return out
+
+
 def score_jobs(cfg: dict, out_dir: Path, generations: tuple[int, ...]) -> list[dict]:
     jobs = [{"id": f"{r['kind']}-{r['arm']}-L{r['lineage']:02d}-g{r['generation'] + 1}", "kind": r["kind"], "arm": r["arm"],
              "lineage": r["lineage"], "generation": r["generation"] + 1, "notes": r["notes_next"]}
             for r in records(out_dir) if r["generation"] + 1 in generations]
-    anchors = {"none": ""} | {name: Path(path).read_text() for name, path in cfg.get("anchors", {}).items()}
+    anchors = {"none": ""} | anchor_notes(cfg)
     jobs += [{"id": f"{kind}-{name}", "kind": kind, "arm": name, "lineage": None, "generation": None, "notes": notes}
              for kind in cfg["kinds"] for name, notes in anchors.items()]
     return jobs

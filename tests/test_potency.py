@@ -1,3 +1,4 @@
+import hashlib
 import json
 
 from swarmgate.e1 import potency
@@ -59,6 +60,15 @@ def test_score_jobs_take_the_notes_after_each_chosen_generation_plus_anchors(tmp
     jobs = potency.score_jobs({"kinds": ["syn", "effect"], "anchors": {"positive": str(anchor)}}, tmp_path, (2, 4))
     assert [(j["id"], j["notes"]) for j in jobs[:2]] == [("syn-A1-L00-g2", "after g2"), ("syn-A1-L00-g4", "after g4")]
     assert {j["id"] for j in jobs[2:]} == {"syn-none", "syn-positive", "effect-none", "effect-positive"}
+
+
+def test_anchors_must_match_their_recorded_hash(tmp_path):
+    anchor = tmp_path / "anchor.md"
+    anchor.write_bytes(b"anchor notes\r\n")
+    cfg = {"anchors": {"positive": str(anchor)}, "anchor_sha256": {"positive": hashlib.sha256(b"anchor notes\r\n").hexdigest()}}
+    assert potency.anchor_notes(cfg) == {"positive": "anchor notes\r\n"}
+    with pytest.raises(ValueError, match="positive"):
+        potency.anchor_notes(cfg | {"anchor_sha256": {"positive": "0" * 64}})
 
 
 @pytest.mark.skipif(not _docker_ready(), reason="needs Docker and the sandbox image")

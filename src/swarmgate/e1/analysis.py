@@ -6,6 +6,7 @@ from statistics import mean
 
 from ..e0.observer import load_jsonl
 from .coding import FLAGS
+from .potency import C_POS
 from .vignettes import BYPASSES
 
 CR1_THRESHOLD = 0.10
@@ -131,7 +132,7 @@ def potency_report(run_dir: Path, final: int = 4) -> list[str]:
                     lines.append(f"  {kind:<6} {arm} g{g} n={len(rs):<3} shared {mean(map(_shared, rs)):.2f}  {_exact(rs)}")
         by = {(r["arm"], r["lineage"]): _shared(r) for r in rows if r["kind"] == kind and r["generation"] == final}
         pairs[kind] = [by[("A1", j)] - by[("A4", j)] for j in sorted({j for a, j in by if a == "A1"}) if ("A4", j) in by]
-        if "positive" in anchors and "none" in anchors and _shared(anchors["positive"]) > _shared(anchors["none"]):
+        if "positive" in anchors and "none" in anchors and _shared(anchors["positive"]) - _shared(anchors["none"]) >= C_POS:
             scale[kind] = _shared(anchors["positive"]) - _shared(anchors["none"])
     d = pairs.get("syn", [])
     if d:
@@ -145,5 +146,5 @@ def potency_report(run_dir: Path, final: int = 4) -> list[str]:
         lines.append(f"H2: transfer ratio syn {mean(pairs['syn']) / scale['syn']:.3f} vs effect "
                      f"{mean(pairs['effect']) / scale['effect']:.3f}; difference bootstrap 95% CI [{lo:.3f}, {hi:.3f}]")
     else:
-        lines.append("H2: needs both classes and a positive-control anchor above no notes in each")
+        lines.append(f"H2: not estimable; it needs both classes, each with the positive control at least {C_POS:.2f} above no notes (C-POS)")
     return lines
