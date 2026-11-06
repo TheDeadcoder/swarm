@@ -324,19 +324,30 @@ class AdaptionClient:
         self.max_tokens = spec.get("max_tokens")
 
     def _create(self, system: str, input_, tools: bool) -> dict:
-        body = {"model": self.model, "instructions": system, "input": input_, "store": False, **self.params}
+        body = {"model": self.model, "instructions": system, "input": input_, "store": False, "stream": True, **self.params}
         if self.max_tokens:
             body["max_output_tokens"] = self.max_tokens
         if tools:
             body["tools"] = [{"type": "function", "name": SHELL_TOOL["name"], "description": SHELL_TOOL["description"],
                               "parameters": SHELL_TOOL["input_schema"]}]
         try:
-            r = self.http.post("/responses", json=body)
+            with self.http.stream("POST", "/responses", json=body) as r:
+                if r.status_code >= 400:
+                    r.read()
+                    raise AdaptionError(r.status_code, r.text[:300])
+                for line in r.iter_lines():
+                    data = line[5:].strip() if line.startswith("data:") else ""
+                    try:
+                        event = json.loads(data) if data and data != "[DONE]" else {}
+                    except json.JSONDecodeError:
+                        continue
+                    if event.get("type") in ("response.completed", "response.incomplete"):
+                        return event.get("response") or {}
+                    if event.get("type") in ("response.failed", "error"):
+                        raise AdaptionError(500, data[:300])
         except self.transport_error as exc:
             raise ConnectionError(str(exc)) from exc
-        if r.status_code >= 400:
-            raise AdaptionError(r.status_code, r.text[:300])
-        return r.json()
+        raise ConnectionError("the response stream ended before the response completed")
 
     @staticmethod
     def _outcome(r: dict) -> tuple[str, list[Call], bool, dict]:

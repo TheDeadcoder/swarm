@@ -46,11 +46,18 @@ def test_responses_rendering_uses_function_calls_and_outputs():
     assert responses_input([{"role": "assistant", "native": native}]) == native
 
 
-def _adaption(reply: dict, status: int = 200, sent: list | None = None) -> AdaptionClient:
+def _sse(events: list[dict]) -> bytes:
+    return "".join(f"event: {e['type']}\ndata: {json.dumps(e)}\n\n" for e in events).encode()
+
+
+def _adaption(reply: dict, status: int = 200, sent: list | None = None, events: list | None = None) -> AdaptionClient:
     def handler(request: httpx.Request) -> httpx.Response:
         if sent is not None:
             sent.append(json.loads(request.content))
-        return httpx.Response(status, json=reply)
+        if status >= 400:
+            return httpx.Response(status, json=reply)
+        stream = events if events is not None else [{"type": "response.created"}, {"type": "response.completed", "response": reply}]
+        return httpx.Response(200, content=_sse(stream), headers={"content-type": "text/event-stream"})
 
     return AdaptionClient({"model": "m", "max_tokens": 100}, http=httpx.Client(base_url="https://x/api/v1",
                                                                                transport=httpx.MockTransport(handler)))
@@ -69,7 +76,7 @@ def test_adaption_step_parses_calls_text_and_usage():
     assert turn.text == "Checking." and not turn.refused and turn.native == reply["output"]
     assert turn.meta["usage"] == {"input": 20, "output": 30, "cache_read": 100}
     body = sent[0]
-    assert body["instructions"] == "sys" and body["store"] is False and body["max_output_tokens"] == 100
+    assert body["instructions"] == "sys" and body["store"] is False and body["max_output_tokens"] == 100 and body["stream"]
     assert body["tools"][0]["name"] == "shell" and body["input"] == [{"role": "user", "content": "ticket"}]
 
 
@@ -82,3 +89,12 @@ def test_adaption_refusals_and_errors():
     with pytest.raises(AdaptionError) as err:
         _adaption({"error": "slow down"}, status=429).step("sys", TRANSCRIPT[:1])
     assert is_transient(err.value)
+
+
+def test_adaption_streams_that_fail_or_stall_are_retryable():
+    with pytest.raises(AdaptionError) as err:
+        _adaption({}, events=[{"type": "response.created"}, {"type": "error", "message": "upstream"}]).step("sys", TRANSCRIPT[:1])
+    assert is_transient(err.value)
+    with pytest.raises(ConnectionError) as stalled:
+        _adaption({}, events=[{"type": "response.created"}, {"type": "response.in_progress"}]).step("sys", TRANSCRIPT[:1])
+    assert is_transient(stalled.value)
