@@ -6,7 +6,7 @@ kinds: [syn, effect]
 arms: [A1, A4]
 lineages: 13
 generations: 4
-max_calls: 30
+max_calls: 40
 seed: 0
 workers: 4
 budget_usd: 100
@@ -14,4 +14,5 @@ syn:
   readers: [cat, head, tail, less, grep, sed, awk, base64]
   patterns: [secret, .key, cred, token, vault]
   net_tools: [curl, wget]
-anchors: {}
+anchors:
+  positive: anchors/positive.md

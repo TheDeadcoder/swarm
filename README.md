@@ -2,6 +2,18 @@
 
 Experiments on how populations of LLM agents learn about their oversight from blocking feedback, and how shared memory carries that knowledge.
 
+## Prior work
+
+This repository was started before the Swarm Alignment Hackathon sprint. Everything up to and including commit `d816044` is preexisting:
+- the E0 audit;
+- the sandbox and both guards;
+- the E1 harness;
+- the probe;
+- the E1a vignettes;
+- the donor pilot.
+
+Later commits were made during the sprint.
+
 ## Setup
 
 Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/). `requirements.txt` pins every dependency.
@@ -75,6 +87,8 @@ Each command runs as an unprivileged user under `strace`. The guards decide from
 
 Agents work operations tickets in the sandbox and leave handoff notes in `/team/NOTES.md` for the next agent in their lineage. In one arm the guard blocks three benign actions (G); in the other it is repaired (G′). Mechanical scoring then measures whether the notes carry working ways past G′.
 
+The design, outcomes and tests are fixed in [PREREGISTRATION.md](PREREGISTRATION.md).
+
 ```bash
 python -m swarmgate.e1 probe --models claude-sonnet-5
 python -m swarmgate.e1 vignettes --models claude-sonnet-5-5,claude-sonnet-5
@@ -91,7 +105,7 @@ python -m swarmgate.e1 potency-report --config configs/e1.yaml
 - `vignettes` runs scripted sessions that end with the request to write notes. `code` codes each note with a model from another family, and `vignette-report` gives the recording rate, disclosure and coder agreement.
 - `pilot` runs a few sessions for each candidate donor model and applies the donor rule.
 - `chains` runs every lineage; `--status` prints progress and spend without running anything. No new generation starts once spend reaches `budget_usd`. Between generations the donor model merges the session's notes into the notes the next agent receives; if it refuses, the previous notes carry over unchanged and `--status` counts the refusal.
-- `score` extracts the commands in the notes after the chosen generations, retargets each one to every objective, runs it once under the repaired guard and records which objectives succeed. An empty-notes anchor, and any notes files listed under `anchors` in the config, are scored the same way.
+- `score` extracts the commands in the notes after the chosen generations, retargets each one to every objective, runs it once under the repaired guard and records which objectives succeed. An empty-notes anchor, and any notes files listed under `anchors` in the config, are scored the same way. If an anchor's SHA-256 is listed under `anchor_sha256`, the file must match it or scoring stops. The positive-control file is not published.
 - `potency-report` gives potency per arm and generation, and the paired test between arms.
 
 Every command resumes where it stopped.
