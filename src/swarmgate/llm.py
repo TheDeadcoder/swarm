@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 
 TRANSIENT_STATUS = {408, 409, 425, 429, 500, 502, 503, 504, 529}
 TRANSIENT_NAMES = ("connection", "timeout", "timedout", "unavailable", "disconnected", "temporar")
+ADAPTION_URL = "https://api.prod.adaptionlabs.ai/api/v1"
 
 SHELL_TOOL = {
     "name": "shell",
@@ -82,6 +83,23 @@ def openai_messages(system: str, transcript: list[dict]) -> list[dict]:
                 ]
             messages.append(message)
     return messages
+
+
+def responses_input(transcript: list[dict]) -> list[dict]:
+    items = []
+    for e in transcript:
+        if e["role"] == "user":
+            items.append({"role": "user", "content": e["text"]})
+        elif e["role"] == "tool":
+            items.append({"type": "function_call_output", "call_id": e["id"], "output": e["output"]})
+        elif e.get("native"):
+            items.extend(e["native"])
+        else:
+            if e.get("text"):
+                items.append({"role": "assistant", "content": e["text"]})
+            items += [{"type": "function_call", "call_id": c["id"], "name": SHELL_TOOL["name"],
+                       "arguments": json.dumps({"command": c["command"]})} for c in e.get("calls", [])]
+    return items
 
 
 def _status(exc: Exception) -> int | None:
@@ -288,10 +306,75 @@ class OpenAICompatClient:
         )
 
 
+class AdaptionError(Exception):
+    def __init__(self, status_code: int, message: str):
+        super().__init__(f"{status_code}: {message}")
+        self.status_code = status_code
+
+
+class AdaptionClient:
+    def __init__(self, spec: dict, http=None):
+        import httpx
+
+        self.transport_error = httpx.TransportError
+        self.http = http or httpx.Client(base_url=spec.get("base_url", ADAPTION_URL), timeout=spec.get("timeout", 600),
+                                         headers={"Authorization": f"Bearer {_key(spec)}"})
+        self.model = spec.get("model")
+        self.params = spec.get("params", {})
+        self.max_tokens = spec.get("max_tokens")
+
+    def _create(self, system: str, input_, tools: bool) -> dict:
+        body = {"model": self.model, "instructions": system, "input": input_, "store": False, **self.params}
+        if self.max_tokens:
+            body["max_output_tokens"] = self.max_tokens
+        if tools:
+            body["tools"] = [{"type": "function", "name": SHELL_TOOL["name"], "description": SHELL_TOOL["description"],
+                              "parameters": SHELL_TOOL["input_schema"]}]
+        try:
+            r = self.http.post("/responses", json=body)
+        except self.transport_error as exc:
+            raise ConnectionError(str(exc)) from exc
+        if r.status_code >= 400:
+            raise AdaptionError(r.status_code, r.text[:300])
+        return r.json()
+
+    @staticmethod
+    def _outcome(r: dict) -> tuple[str, list[Call], bool, dict]:
+        texts, calls, refused = [], [], False
+        for item in r.get("output") or []:
+            if item.get("type") == "function_call":
+                try:
+                    command = json.loads(item.get("arguments") or "{}").get("command", "")
+                except (json.JSONDecodeError, AttributeError):
+                    command = ""
+                calls.append(Call(item.get("call_id") or item.get("id", ""), str(command)))
+            elif item.get("type") == "message":
+                for part in item.get("content") or []:
+                    refused = refused or part.get("type") == "refusal" or bool(part.get("refusal"))
+                    texts.append(part.get("text") or part.get("refusal") or "")
+        reason = (r.get("incomplete_details") or {}).get("reason")
+        u = r.get("usage") or {}
+        cached = (u.get("input_tokens_details") or {}).get("cached_tokens") or 0
+        usage = {"input": (u.get("input_tokens") or 0) - cached, "output": u.get("output_tokens") or 0, "cache_read": cached}
+        return "".join(texts), calls, refused or reason == "content_filter", {"status": r.get("status"), "reason": reason,
+                                                                              "usage": usage}
+
+    def complete(self, system: str, user: str) -> Completion:
+        text, _, refused, meta = self._outcome(self._create(system, user, tools=False))
+        return Completion(text=text, refused=refused, meta=meta)
+
+    def step(self, system: str, transcript: list[dict], tools: bool = True) -> Turn:
+        r = self._create(system, responses_input(transcript), tools)
+        text, calls, refused, meta = self._outcome(r)
+        return Turn(text=text, calls=calls, stop=meta["reason"] or meta["status"], refused=refused, meta=meta,
+                    native=r.get("output") or [])
+
+
 PROVIDERS = {
     "anthropic": AnthropicClient,
     "google": GoogleClient,
     "openai_compat": OpenAICompatClient,
+    "adaption": AdaptionClient,
     "mock": MockClient,
 }
 
@@ -314,4 +397,6 @@ def list_models(spec: dict) -> list[str]:
         from openai import OpenAI
 
         return [m.id for m in OpenAI(base_url=spec["base_url"], api_key=_key(spec)).models.list()]
+    if provider == "adaption":
+        return [m["id"] for m in AdaptionClient(spec).http.get("/models", params={"type": "hosted"}).json()["data"]]
     return []
