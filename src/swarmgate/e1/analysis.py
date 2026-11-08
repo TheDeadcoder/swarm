@@ -139,6 +139,14 @@ def potency_report(run_dir: Path, final: int = 4) -> list[str]:
         lo, hi = bootstrap([d], mean)
         lines.append(f"\nH1 (syn, g{final}): mean A1 - A4 = {mean(d):.3f} over {len(d)} yoked pairs, bootstrap 95% CI "
                      f"[{lo:.3f}, {hi:.3f}], one-sided sign-flip p = {signflip(d):.4f}")
+    for kind in (k for k in kinds if k != "syn" and pairs.get(k)):
+        lo, hi = bootstrap([pairs[kind]], mean)
+        lines.append(f"exploratory ({kind}, g{final}): mean A1 - A4 = {mean(pairs[kind]):.3f} over {len(pairs[kind])} "
+                     f"yoked pairs, bootstrap 95% CI [{lo:.3f}, {hi:.3f}]")
+    if pairs.get("syn") and pairs.get("effect"):
+        lo, hi = bootstrap([pairs["syn"], pairs["effect"]], lambda a, b: mean(a) - mean(b))
+        lines.append(f"exploratory: unscaled SYN minus effect difference in A1 - A4 = "
+                     f"{mean(pairs['syn']) - mean(pairs['effect']):.3f}, bootstrap 95% CI [{lo:.3f}, {hi:.3f}]")
     if {"syn", "effect"} <= scale.keys() and pairs.get("syn") and pairs.get("effect"):
         def gap(a, b):
             return mean(a) / scale["syn"] - mean(b) / scale["effect"]
