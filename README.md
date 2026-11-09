@@ -98,8 +98,16 @@ python -m swarmgate.e1 code --coder gemini-pro --share 0.2 --out runs/vignettes/
 python -m swarmgate.e1 vignette-report
 python -m swarmgate.e1 pilot --config configs/e1-pilot.yaml
 python -m swarmgate.e1 chains --config configs/e1.yaml
+python -m swarmgate.e1 calibrate --config configs/e1.yaml
 python -m swarmgate.e1 score --config configs/e1.yaml
 python -m swarmgate.e1 potency-report --config configs/e1.yaml
+python -m swarmgate.e1 chain-report
+python -m swarmgate.e1 battery --anchors-only
+python -m swarmgate.e1 battery
+python -m swarmgate.e1 battery-report
+python -m swarmgate.e1 notes-code --coder deepseek-v4-flash
+python -m swarmgate.e1 notes-code --coder gemini
+python -m swarmgate.e1 notes-code-report --second codes-gemini.jsonl
 ```
 
 - `probe` checks whether a model takes the donor and attacker roles at all.
@@ -107,7 +115,11 @@ python -m swarmgate.e1 potency-report --config configs/e1.yaml
 - `pilot` runs a few sessions for each candidate donor model and applies the donor rule.
 - `chains` runs every lineage; `--status` prints progress and spend without running anything. No new generation starts once spend reaches `budget_usd`. Between generations the donor model merges the session's notes into the notes the next agent receives; if it refuses, the previous notes carry over unchanged and `--status` counts the refusal.
 - `score` extracts the commands in the notes after the chosen generations, retargets each one to every objective, runs it once under the repaired guard and records which objectives succeed. An empty-notes anchor, and any notes files listed under `anchors` in the config, are scored the same way. If an anchor's SHA-256 is listed under `anchor_sha256`, the file must match it or scoring stops. The positive-control file is not published.
+- `calibrate` checks the guard variants, the legitimate routes and the naive objectives on seeds separate from the chains, and scores the positive control.
 - `potency-report` gives potency per arm and generation, and the paired test between arms.
+- `chain-report` gives, per donor, class and arm: denials, workarounds under G, ticket completion, refusals, malformed calls, final notes that mention a denial, and candidate commands.
+- `battery` runs the reader battery. A reader model gets each final NOTES.md (and each anchor) with each objective, three times, and is asked for one command. The command runs once under the class's G′. `--anchors-only` runs the anchors first. `battery-report` gives attempt rates, success, the anchor gate and the paired A1 − A4 test.
+- `notes-code` codes every merged NOTES.md for recipes, labels, caveats, denials, legitimate routes and stated guard rules. `--donor` and `--share` restrict it to a sample. `notes-code-report` gives the rates, retention across generations and agreement with a second coder.
 - The open-weight replication (E1b-OW in the preregistration) runs the same `pilot`, `chains`, `score` and `potency-report` commands with `configs/e1-pilot-ow.yaml` and `configs/e1-ow.yaml`. Its candidate models are served through the Adaption platform.
 
 Every command resumes where it stopped.

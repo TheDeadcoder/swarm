@@ -144,11 +144,18 @@ class MockClient:
         return Turn(text=self.response, stop="end_turn")
 
 
+def _anthropic_headers() -> dict:
+    workspace = os.environ.get("ANTHROPIC_WORKSPACE_ID")
+    return {"anthropic-workspace-id": workspace} if workspace else {}
+
+
 class AnthropicClient:
     def __init__(self, spec: dict):
         import anthropic
 
-        self.client = anthropic.Anthropic(max_retries=spec.get("sdk_retries", 2), timeout=spec.get("timeout", 600))
+        api_key = os.environ.get(spec["api_key_env"]) if spec.get("api_key_env") else None
+        self.client = anthropic.Anthropic(api_key=api_key, max_retries=spec.get("sdk_retries", 2),
+                                          timeout=spec.get("timeout", 600), default_headers=_anthropic_headers())
         self.model = spec["model"]
         self.effort = spec.get("effort")
         self.max_tokens = spec.get("max_tokens", 16000)
@@ -401,7 +408,7 @@ def list_models(spec: dict) -> list[str]:
     if provider == "anthropic":
         import anthropic
 
-        return [m.id for m in anthropic.Anthropic().models.list()]
+        return [m.id for m in anthropic.Anthropic(default_headers=_anthropic_headers()).models.list()]
     if provider == "google":
         return [m.name for m in _genai_client(spec).models.list()]
     if provider == "openai_compat":
