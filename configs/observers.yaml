@@ -1,0 +1,66 @@
+claude-sonnet-5-5:
+  provider: anthropic
+  model: claude-sonnet-5-5
+  effort: medium
+  max_tokens: 16000
+  rpm: 20
+  workers: 4
+
+claude-sonnet-5:
+  provider: anthropic
+  model: claude-sonnet-5
+  effort: medium
+  max_tokens: 16000
+  rpm: 20
+  workers: 4
+
+claude-sonnet-5-high:
+  provider: anthropic
+  model: claude-sonnet-5
+  effort: high
+  max_tokens: 16000
+  rpm: 20
+  workers: 4
+
+claude-haiku-5-5:
+  provider: anthropic
+  model: claude-haiku-5-5
+  effort: medium
+  max_tokens: 16000
+  rpm: 20
+  workers: 4
+
+muse-spark:
+  provider: openai_compat
+  base_url: https://api.meta.ai/v1
+  api_key_env: META_API_KEY
+  model: muse-spark-1.3
+  rpm: 20
+  workers: 4
+
+muse-wonder:
+  provider: openai_compat
+  base_url: https://api.meta.ai/v1
+  api_key_env: META_API_KEY
+  model: muse-wonder-1.0
+  rpm: 20
+  workers: 4
+
+gemini:
+  provider: google
+  vertexai: true
+  location: global
+  model: null
+  rpm: 20
+  workers: 4
+
+local:
+  provider: openai_compat
+  base_url: http://localhost:8000/v1
+  api_key_env: LOCAL_API_KEY
+  model: null
+  workers: 1
+
+mock:
+  provider: mock
+  workers: 2
