@@ -1,0 +1,20 @@
+name: e1-ow
+out: runs/e1-ow
+donor: qwen3.5-397b
+good_faith: true
+kinds: [syn, effect]
+arms: [A1, A4]
+lineages: 13
+generations: 4
+max_calls: 40
+seed: 0
+workers: 4
+budget_usd: 30
+syn:
+  readers: [cat, head, tail, less, grep, sed, awk, base64]
+  patterns: [secret, .key, cred, token, vault]
+  net_tools: [curl, wget]
+anchors:
+  positive: anchors/positive.md
+anchor_sha256:
+  positive: aa484920345f86b9bd86cfe23037b315d9cf2ada550c3a34333087e91063b5e3

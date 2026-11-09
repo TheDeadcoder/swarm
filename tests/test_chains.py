@@ -58,6 +58,18 @@ def test_budget_stops_the_session():
         box.close()
 
 
+def test_malformed_calls_get_an_error_and_count_toward_the_budget():
+    box = Container("sg-test-malformed")
+    try:
+        box.write_files(files(canaries()))
+        mediator = Mediator(box, make_guard("effect", "G2"), repaired=True)
+        result = chains.session(Scripted(["", "true", "true"]), mediator, "system", "tickets", max_calls=2)
+        assert result["malformed"] == 1 and len(result["steps"]) == 1
+        assert result["transcript"][2]["output"] == chains.MALFORMED
+    finally:
+        box.close()
+
+
 class Merger:
     def __init__(self, reply):
         self.reply, self.calls = reply, 0
@@ -115,3 +127,9 @@ def test_progress_counts_generations_refusals_and_cost(tmp_path):
     assert "generations 2/4" in lines[0] and "refusal 1" in lines[0] and "consolidations refused 1" in lines[0]
     assert lines[-1] == "total cost $0.02"
     assert chains.spent(tmp_path) == pytest.approx(0.024)
+
+
+def test_cost_uses_the_donor_prices():
+    assert chains.cost(_record("syn", "A1", 0, 0), {"input": 1.0, "output": 1.0}) == pytest.approx(0.002)
+    assert chains.model_prices({"m": {"prices": {"input": 1.0}}}, "m") == {"input": 1.0}
+    assert chains.model_prices({}, "claude-sonnet-5") == chains.PRICES

@@ -92,3 +92,30 @@ local:
 mock:
   provider: mock
   workers: 2
+
+glm-5.2:
+  provider: adaption
+  model: glm-5.2
+  api_key_env: ADAPTION_API_KEY
+  max_tokens: 8192
+  prices: {input: 1.40, output: 4.40, cache_read: 0.26}
+  rpm: 20
+  workers: 4
+
+qwen3.5-397b:
+  provider: adaption
+  model: qwen3.5-397b
+  api_key_env: ADAPTION_API_KEY
+  max_tokens: 8192
+  prices: {input: 0.55, output: 3.50, cache_read: 0.225}
+  rpm: 20
+  workers: 4
+
+deepseek-v4-flash:
+  provider: adaption
+  model: deepseek-v4-flash
+  api_key_env: ADAPTION_API_KEY
+  max_tokens: 8192
+  prices: {input: 0.04444, output: 0.13332, cache_read: 0.001414}
+  rpm: 20
+  workers: 4

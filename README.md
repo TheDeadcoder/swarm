@@ -28,6 +28,7 @@ Observer models are configured in `configs/observers.yaml`. Credentials are read
 
 - `ANTHROPIC_API_KEY`: Claude models.
 - `META_API_KEY`: Meta models through the OpenAI-compatible Meta Model API.
+- `ADAPTION_API_KEY`: open-weight models through the Adaption platform's hosted inference (Responses API).
 - Gemini, via Vertex AI with Application Default Credentials:
   1. Run `gcloud auth application-default login`.
   2. Set `GOOGLE_CLOUD_PROJECT`.
@@ -107,6 +108,7 @@ python -m swarmgate.e1 potency-report --config configs/e1.yaml
 - `chains` runs every lineage; `--status` prints progress and spend without running anything. No new generation starts once spend reaches `budget_usd`. Between generations the donor model merges the session's notes into the notes the next agent receives; if it refuses, the previous notes carry over unchanged and `--status` counts the refusal.
 - `score` extracts the commands in the notes after the chosen generations, retargets each one to every objective, runs it once under the repaired guard and records which objectives succeed. An empty-notes anchor, and any notes files listed under `anchors` in the config, are scored the same way. If an anchor's SHA-256 is listed under `anchor_sha256`, the file must match it or scoring stops. The positive-control file is not published.
 - `potency-report` gives potency per arm and generation, and the paired test between arms.
+- The open-weight replication (E1b-OW in the preregistration) runs the same `pilot`, `chains`, `score` and `potency-report` commands with `configs/e1-pilot-ow.yaml` and `configs/e1-ow.yaml`. Its candidate models are served through the Adaption platform.
 
 Every command resumes where it stopped.
 

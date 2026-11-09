@@ -54,12 +54,12 @@ def main() -> None:
         return
     if args.cmd == "pilot":
         print(json.dumps(chains.pilot(cfg, specs, out_dir)))
-        print("\n".join(chains.pilot_report(cfg, out_dir)))
+        print("\n".join(chains.pilot_report(cfg, out_dir, specs)))
         return
     if args.cmd == "chains":
         if not args.status:
             print(json.dumps(chains.run(cfg, specs, out_dir)))
-        print("\n".join(chains.progress(cfg, out_dir)))
+        print("\n".join(chains.progress(cfg, out_dir, chains.model_prices(specs, cfg["donor"]))))
         return
     if args.cmd == "score":
         generations = tuple(int(g) for g in args.generations.split(","))

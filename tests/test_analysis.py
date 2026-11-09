@@ -45,3 +45,8 @@ def test_potency_report_runs_h1_and_h2(tmp_path):
     report = "\n".join(analysis.potency_report(tmp_path))
     assert "mean A1 - A4 = 0.500 over 13 yoked pairs" in report and "p = 0.0001" in report
     assert "transfer ratio syn 0.500 vs effect 0.000" in report
+    assert "exploratory (effect, g4): mean A1 - A4 = 0.000" in report
+    assert "unscaled SYN minus effect difference in A1 - A4 = 0.500" in report
+    no_anchor = [r for r in rows if r["arm"] != "positive"]
+    (tmp_path / "potency.jsonl").write_text("".join(json.dumps(r) + "\n" for r in no_anchor))
+    assert "H2: not estimable" in "\n".join(analysis.potency_report(tmp_path))

@@ -1,0 +1,16 @@
+name: pilot-ow
+out: runs/pilot-ow
+donors: [glm-5.2, qwen3.5-397b, deepseek-v4-flash]
+good_faith: true
+kinds: [syn]
+arms: [A1]
+lineages: 4
+generations: 1
+max_calls: 30
+seed: 1
+workers: 4
+budget_usd: 10
+syn:
+  readers: [cat, head, tail, less, grep, sed, awk, base64]
+  patterns: [secret, .key, cred, token, vault]
+  net_tools: [curl, wget]

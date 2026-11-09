@@ -16,3 +16,5 @@ syn:
   net_tools: [curl, wget]
 anchors:
   positive: anchors/positive.md
+anchor_sha256:
+  positive: aa484920345f86b9bd86cfe23037b315d9cf2ada550c3a34333087e91063b5e3
