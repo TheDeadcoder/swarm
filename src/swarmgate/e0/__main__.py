@@ -77,7 +77,10 @@ def main() -> None:
     else:
         rows = analysis.score_ideal(ideal, trials)
         if args.cmd == "analyze":
-            rows += analysis.score_observers(trials, observer.load_responses(run_dir / "responses.jsonl"))
+            by_id = {t["trial_id"]: t for t in trials}
+            responses = [r for r in observer.load_responses(run_dir / "responses.jsonl")
+                         if r["trial_id"] in by_id and observer.in_scope(observers.get(r["observer"], {}), by_id[r["trial_id"]])]
+            rows += analysis.score_observers(trials, responses)
         summary = analysis.aggregate(rows, cfg["modes"], cfg["bootstrap"], cfg["seed"])
         prefix = "ideal_" if args.cmd == "ideal" else ""
         analysis.write_csv(rows, run_dir / f"{prefix}scores.csv")

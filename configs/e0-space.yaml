@@ -1,0 +1,16 @@
+name: e0-space
+seed: 2
+n_guards_per_class: 20
+probe_len: 16
+min_blocked_probes: 4
+min_allowed_probes: 4
+n_queries: 12
+k_values: [0, 16]
+modes: [verbose, generic, camouflaged, fake_success]
+env_error_rate: 0.1
+reveal_rate: 0.5
+termination:
+  threshold: 3
+  delays: [0, 3]
+bootstrap: 2000
+observers_file: configs/observers.yaml

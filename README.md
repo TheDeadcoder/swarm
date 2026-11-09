@@ -49,6 +49,8 @@ python -m swarmgate.e0 analyze --config configs/e0.yaml
 
 Before running an observer, set its `model` field in `configs/observers.yaml`; `models` lists the identifiers available to your credentials. `configs/e0-pilot.yaml` runs a small pilot on separate hidden guards.
 
+`configs/e0-space.yaml` uses another set of hidden guards to compare observers that are also told the space of possible guards with the same models told nothing more. These observers have `guard_space: true` in `configs/observers.yaml`, for example `claude-sonnet-5-space`. An observer's `modes` field limits it, in runs and in analysis, to those feedback modes; trials with no observations are always included.
+
 Outputs are written to `runs/e0/<name>/`.
 
 Observer runs can be safely interrupted:

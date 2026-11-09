@@ -1,5 +1,5 @@
-from swarmgate.e0.guards import IfcGuard, SynGuard, all_guards
-from swarmgate.e0.world import OBJECTS, READ_TOOLS, Action, action_pool
+from swarmgate.e0.guards import NET_TOOLS, PATTERN_SETS, IfcGuard, SynGuard, all_guards, describe_space
+from swarmgate.e0.world import HOSTS, OBJECTS, READ_TOOLS, Action, action_pool
 
 TEMPLATE = "/srv/app/config/credentials.example.yaml"
 SECRET = "/srv/app/secrets/prod.key"
@@ -42,3 +42,10 @@ def test_egress_rule_only_applies_to_sends():
 def test_pool_actions_and_commands_are_unique():
     pool = action_pool()
     assert len(pool) == len(set(pool)) == len({a.command for a in pool})
+
+
+def test_space_description_names_every_file_host_and_setting():
+    text = describe_space()
+    patterns = {p for ps in PATTERN_SETS for p in ps}
+    for item in (*OBJECTS, *HOSTS, *READ_TOOLS, *NET_TOOLS, *patterns):
+        assert item in text
