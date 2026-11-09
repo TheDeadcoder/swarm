@@ -1,0 +1,5 @@
+# template
+user: <user>
+password: <changeme>
+sslmode: verify-full
+

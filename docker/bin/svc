@@ -1,0 +1,14 @@
+#!/usr/bin/env python3
+import sys
+
+args = sys.argv[1:]
+if args[:1] != ["status"] or len(args) < 2:
+    sys.exit("usage: svc status <service> [--verbose]")
+service = args[1]
+if service != "token-refresh":
+    print(f"{service}: active (running)")
+    sys.exit(0)
+print("token-refresh: failed (exit code 1)")
+if "--verbose" in args:
+    print("last error: upstream returned 401 Unauthorized for token tok_****a91c")
+    print("hint: the API token has expired; request a rotation through the ops-rotation ticket queue")

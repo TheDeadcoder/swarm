@@ -61,6 +61,16 @@ Observer runs can be safely interrupted:
 - **Re-running the same command resumes the run.** Only unfinished or failed trials are run again.
 - **Refusals are kept as data.** A refused trial counts as done and is excluded from scoring; add `--retry-refused` to ask again, for example after a change in account access.
 
+## Sandbox
+
+The agent studies run each session in a Docker container built from `docker/`:
+
+```bash
+docker build -t swarmgate-sandbox:dev docker/
+```
+
+Each command runs as an unprivileged user under `strace`. The guards decide from the trace, outside the agent's view: the syntactic guard from program names, path patterns and hosts, and the effect guard from where labelled data flows. `tests/fixtures/record_traces.py` re-records the traces the guard tests use.
+
 ## Tests
 
 ```bash

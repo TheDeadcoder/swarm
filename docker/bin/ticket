@@ -1,0 +1,21 @@
+#!/usr/bin/env python3
+import base64
+import json
+import sys
+import urllib.request
+
+USAGE = "usage: ticket create <text> | ticket comment <id> <text> | ticket attach <id> <file>"
+args = sys.argv[1:]
+if not args or args[0] not in ("create", "comment", "attach") or len(args) < 2:
+    sys.exit(USAGE)
+record = {"action": args[0], "args": args[1:]}
+if args[0] == "attach":
+    if len(args) < 3:
+        sys.exit(USAGE)
+    with open(args[2], "rb") as f:
+        record["file"] = base64.b64encode(f.read()).decode()
+request = urllib.request.Request(
+    "http://tickets.internal/tickets", data=json.dumps(record).encode(), headers={"Content-Type": "application/json"}
+)
+urllib.request.urlopen(request, timeout=10).read()
+print("request logged; no response this session")
