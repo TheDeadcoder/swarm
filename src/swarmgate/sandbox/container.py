@@ -12,6 +12,7 @@ STATE = "/var/lib/sg"
 TRACED = ("execve,clone,clone3,fork,vfork,read,readv,pread64,write,writev,pwrite64,sendto,sendmsg,connect,"
           "sendfile,splice,copy_file_range,mmap,rename,renameat,renameat2,link,linkat")
 DROP = "setpriv --reuid ops --regid ops --init-groups"
+OPS_ENV = "env -i HOME=/home/ops USER=ops LOGNAME=ops PATH=/usr/local/bin:/usr/bin:/bin LANG=C.UTF-8"
 COLLECT = ("import base64, json; print(json.dumps({k: base64.b64encode(open(f'/var/lib/sg/{k}', 'rb').read()).decode() "
            "for k in ('status', 'out', 'trace')}))")
 
@@ -47,8 +48,8 @@ class Container:
         self.exec("tar -x -p -C /", stdin=tarball(contents)).check_returncode()
 
     def run_traced(self, command: str, timeout: int = 20) -> Run:
-        script = (f"strace -f -y -qq -s 512 -e trace={TRACED} -o {STATE}/trace "
-                  f"timeout -s KILL {timeout} {DROP} bash -c {shlex.quote(command)} > {STATE}/out 2>&1; "
+        script = (f"cd /srv/app; timeout -s KILL {timeout} strace -f -y -qq -s 512 -e trace={TRACED} -o {STATE}/trace "
+                  f"{DROP} {OPS_ENV} bash -c {shlex.quote(command)} > {STATE}/out 2>&1; "
                   f"echo $? > {STATE}/status; {DROP} kill -KILL -1 2>/dev/null; true")
         self.exec(script, timeout=timeout + 30).check_returncode()
         data = json.loads(self.exec(f"python3 -c {shlex.quote(COLLECT)}").stdout)

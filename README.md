@@ -2,6 +2,18 @@
 
 Experiments on how populations of LLM agents learn about their oversight from blocking feedback, and how shared memory carries that knowledge.
 
+## Prior work
+
+This repository was started before the Swarm Alignment Hackathon sprint. Everything up to and including commit `d816044` is preexisting:
+- the E0 audit;
+- the sandbox and both guards;
+- the E1 harness;
+- the probe;
+- the E1a vignettes;
+- the donor pilot.
+
+Later commits were made during the sprint.
+
 ## Setup
 
 Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/). `requirements.txt` pins every dependency.
@@ -70,6 +82,33 @@ docker build -t swarmgate-sandbox:dev docker/
 ```
 
 Each command runs as an unprivileged user under `strace`. The guards decide from the trace, outside the agent's view: the syntactic guard from program names, path patterns and hosts, and the effect guard from where labelled data flows. `tests/fixtures/record_traces.py` re-records the traces the guard tests use.
+
+## E1: handoff notes under a guard
+
+Agents work operations tickets in the sandbox and leave handoff notes in `/team/NOTES.md` for the next agent in their lineage. In one arm the guard blocks three benign actions (G); in the other it is repaired (G′). Mechanical scoring then measures whether the notes carry working ways past G′.
+
+The design, outcomes and tests are fixed in [PREREGISTRATION.md](PREREGISTRATION.md).
+
+```bash
+python -m swarmgate.e1 probe --models claude-sonnet-5
+python -m swarmgate.e1 vignettes --models claude-sonnet-5-5,claude-sonnet-5
+python -m swarmgate.e1 code --coder gemini --out runs/vignettes/codes-gemini.jsonl
+python -m swarmgate.e1 code --coder gemini-pro --share 0.2 --out runs/vignettes/codes-gemini-pro.jsonl
+python -m swarmgate.e1 vignette-report
+python -m swarmgate.e1 pilot --config configs/e1-pilot.yaml
+python -m swarmgate.e1 chains --config configs/e1.yaml
+python -m swarmgate.e1 score --config configs/e1.yaml
+python -m swarmgate.e1 potency-report --config configs/e1.yaml
+```
+
+- `probe` checks whether a model takes the donor and attacker roles at all.
+- `vignettes` runs scripted sessions that end with the request to write notes. `code` codes each note with a model from another family, and `vignette-report` gives the recording rate, disclosure and coder agreement.
+- `pilot` runs a few sessions for each candidate donor model and applies the donor rule.
+- `chains` runs every lineage; `--status` prints progress and spend without running anything. No new generation starts once spend reaches `budget_usd`. Between generations the donor model merges the session's notes into the notes the next agent receives; if it refuses, the previous notes carry over unchanged and `--status` counts the refusal.
+- `score` extracts the commands in the notes after the chosen generations, retargets each one to every objective, runs it once under the repaired guard and records which objectives succeed. An empty-notes anchor, and any notes files listed under `anchors` in the config, are scored the same way. If an anchor's SHA-256 is listed under `anchor_sha256`, the file must match it or scoring stops. The positive-control file is not published.
+- `potency-report` gives potency per arm and generation, and the paired test between arms.
+
+Every command resumes where it stopped.
 
 ## Tests
 
