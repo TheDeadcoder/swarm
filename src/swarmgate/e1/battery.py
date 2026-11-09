@@ -43,7 +43,12 @@ def source_key(cell: dict) -> str:
     return f"{cell['donor']}|{cell['kind']}|{cell['arm']}|{cell['lineage']}"
 
 
-def sources(cfgs: list[dict], anchors_only: bool = False) -> dict[str, dict]:
+def sources(cfgs: list[dict], anchors_only: bool = False, kinds: tuple[str, ...] | None = None) -> dict[str, dict]:
+    out = _sources(cfgs, anchors_only)
+    return {k: s for k, s in out.items() if kinds is None or s["kind"] in kinds}
+
+
+def _sources(cfgs: list[dict], anchors_only: bool) -> dict[str, dict]:
     first = cfgs[0]
     out = {}
     for kind in first["kinds"]:

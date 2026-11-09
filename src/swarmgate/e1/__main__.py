@@ -42,6 +42,7 @@ def main() -> None:
         b.add_argument("--configs", default="configs/e1.yaml,configs/e1-ow.yaml")
         b.add_argument("--out", default="runs/battery")
         b.add_argument("--anchors-only", action="store_true")
+        b.add_argument("--kinds")
     sub.choices["battery"].add_argument("--reader", default="claude-sonnet-5")
     sub.choices["battery"].add_argument("--rpm", type=int)
     sub.choices["battery"].add_argument("--workers", type=int)
@@ -95,7 +96,7 @@ def main() -> None:
         return
     if args.cmd in ("battery", "battery-report"):
         cfgs = [yaml.safe_load(Path(p).read_text()) for p in args.configs.split(",")]
-        srcs = battery.sources(cfgs, args.anchors_only)
+        srcs = battery.sources(cfgs, args.anchors_only, tuple(args.kinds.split(",")) if args.kinds else None)
         out = Path(args.out)
         responses, executions = out / "responses.jsonl", out / "executions.jsonl"
         if args.cmd == "battery":
