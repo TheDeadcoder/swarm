@@ -70,7 +70,15 @@ gemini:
   provider: google
   vertexai: true
   location: global
-  model: null
+  model: gemini-3.8-flash
+  rpm: 20
+  workers: 4
+
+gemini-pro:
+  provider: google
+  vertexai: true
+  location: global
+  model: gemini-3.1-pro-preview
   rpm: 20
   workers: 4
 
