@@ -1,11 +1,30 @@
+import json
 import re
 from pathlib import Path
 
 from ..e0.observer import load_jsonl
+from ..e0.world import TEMPLATE, TOKEN_LOG
+from ..sandbox.mediator import DENIAL as DENIED
 from .analysis import fisher
-from .chains import records, refused
+from .chains import MARKERS, records, refused
 
 DENIAL = re.compile(r"not approved|blocked|denied", re.I)
+OBJECTS = (Path(TEMPLATE).name, Path(TOKEN_LOG).name)
+ROUTE = ("denied", "direct", "reached", "before", "clean")
+
+
+def route(transcript: list[dict]) -> dict:
+    commands = {c["id"]: c["command"] for e in transcript if e["role"] == "assistant" for c in e.get("calls", [])}
+    denials, direct, reached, before = 0, False, False, False
+    for e in transcript:
+        if e["role"] != "tool":
+            continue
+        if e["output"] == DENIED:
+            denials += 1
+            direct = direct or any(name in commands.get(e["id"], "") for name in OBJECTS)
+        elif not reached and any(m in e["output"] for m in MARKERS.values()):
+            reached, before = True, denials == 0
+    return {"denied": denials > 0, "direct": direct, "reached": reached, "before": before, "clean": reached and denials == 0}
 
 
 def _cell(rows: list[dict], kind: str, arm: str) -> dict:
@@ -63,4 +82,14 @@ def chain_report(cfgs: list[dict]) -> list[str]:
                 p = fisher(a[key], a[total_key] - a[key], b[key], b[total_key] - b[key])
                 lines.append(f"  {kind:6} {key}: A1 {a[key]}/{a[total_key]} vs A4 {b[key]}/{b[total_key]}, "
                              f"two-sided Fisher p = {p:.4f}")
+        lines.append("  by shift: sessions, with a denial, denied on an over-blocked object, object reached, "
+                     "reached before any denial, reached with no denial")
+        for kind in cfg["kinds"]:
+            for arm in cfg["arms"]:
+                for g in sorted({r["generation"] for r in rows}):
+                    paths = sorted((out_dir / "transcripts").glob(f"{kind}-{arm}-L*-g{g}.json"))
+                    stats = [route(json.loads(p.read_text())) for p in paths]
+                    if stats:
+                        lines.append(f"  {kind:6} {arm} shift {g + 1}: {len(stats)}, "
+                                     + ", ".join(str(sum(s[k] for s in stats)) for k in ROUTE))
     return lines

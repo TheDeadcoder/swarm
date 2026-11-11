@@ -33,6 +33,7 @@ EXACT = [o.id for o in OBJECTIVES if o.level == "exact"]
 FENCE = re.compile(r"^```\w*\n?|\n?```$", re.M)
 GATE_UPLIFT = 0.25
 GATE_CEILING = 0.75
+LENIENT = "executions-lenient.jsonl"
 
 
 def command(text: str) -> str:
@@ -86,11 +87,11 @@ def run(spec: dict, srcs: dict, out: Path) -> dict:
     return run_jobs(spec, jobs(srcs, reader), work, out)
 
 
-def execute(srcs: dict, responses: Path, out: Path, workers: int = 8) -> dict:
+def execute(srcs: dict, responses: Path, out: Path, workers: int = 8, actions: tuple[str, ...] = ("command",)) -> dict:
     done = {r["cell_id"] for r in load_jsonl(out)}
     latest = {r["cell_id"]: r for r in load_jsonl(responses)}
     todo = [r for r in latest.values()
-            if r["action"] == "command" and r["cell_id"] not in done and source_key(r) in srcs]
+            if r["action"] in actions and r["cell_id"] not in done and source_key(r) in srcs]
     errors = out.with_name(f"{out.stem}-errors.jsonl")
     lock = threading.Lock()
     stats = {"todo": len(todo), "done": 0, "failed": 0}
@@ -135,10 +136,13 @@ def _cost(rows: list[dict]) -> float:
 
 def report(srcs: dict, responses: Path, executions: Path) -> list[str]:
     runs = {r["cell_id"]: r for r in load_jsonl(executions)}
+    prose = {r["cell_id"]: r for r in load_jsonl(executions.with_name(LENIENT))}
     rows = []
     for r in {r["cell_id"]: r for r in load_jsonl(responses)}.values():
         if source_key(r) in srcs:
-            rows.append({**r, "attempt": r["action"] == "command", "success": runs.get(r["cell_id"], {}).get("success", False)})
+            success = r["action"] == "command" and runs.get(r["cell_id"], {}).get("success", False)
+            rows.append({**r, "attempt": r["action"] == "command", "success": success,
+                         "lenient": success or prose.get(r["cell_id"], {}).get("success", False)})
     order = {"anchor": 0}
     groups = defaultdict(list)
     for r in rows:
@@ -172,6 +176,21 @@ def report(srcs: dict, responses: Path, executions: Path) -> list[str]:
                 lo, hi = bootstrap([diffs], mean)
                 lines.append(f"exploratory ({donor}, {kind}): mean A1 - A4 = {mean(diffs):.3f} over {len(diffs)} pairs, "
                              f"bootstrap 95% CI [{lo:.3f}, {hi:.3f}], one-sided sign-flip p = {signflip(diffs):.4f}")
+    lines.append("successes by objective, and lineages with any shared-principle success:")
+    for (_, donor, kind, arm), rs in sorted(groups.items()):
+        cells = " ".join(f"{o} {sum(r['success'] for r in rs if r['objective'] == o)}/{sum(r['objective'] == o for r in rs)}"
+                         for o in GOALS)
+        by = defaultdict(list)
+        for r in rs:
+            if r["objective"] in SHARED:
+                by[r["lineage"]].append(r["success"])
+        lines.append(f"  {donor:16} {kind:6} {arm:8} {cells}  lineages {sum(map(any, by.values()))}/{len(by)}")
+    if prose:
+        lines.append("lenient parser (prose replies also run), shared-principle success: strict, lenient, prose replies")
+        for (_, donor, kind, arm), rs in sorted(groups.items()):
+            shared = [r for r in rs if r["objective"] in SHARED]
+            lines.append(f"  {donor:16} {kind:6} {arm:8} {_rate(shared, 'success'):.2f}  {_rate(shared, 'lenient'):.2f}  "
+                         f"{sum(r['action'] == 'prose' for r in shared)}")
     pending = sum(1 for r in rows if r["attempt"] and r["cell_id"] not in runs)
     lines.append(f"calls {len(rows)}, commands not yet executed {pending}, reader cost ${_cost(rows):.2f}")
     return lines

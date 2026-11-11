@@ -6,7 +6,7 @@ import yaml
 from dotenv import load_dotenv
 
 from ..sandbox.container import Container
-from . import analysis, battery, behavior, calibration, chains, coding, notes_coding, potency, probe, vignettes
+from . import analysis, battery, behavior, calibration, chains, coding, export, notes_coding, potency, probe, vignettes
 
 
 def main() -> None:
@@ -48,7 +48,21 @@ def main() -> None:
     sub.choices["battery"].add_argument("--workers", type=int)
     sub.choices["battery"].add_argument("--exec-workers", type=int, default=8)
     sub.choices["battery"].add_argument("--api-key-env")
+    sub.choices["battery"].add_argument("--lenient", action="store_true")
     sub.add_parser("chain-report").add_argument("--configs", default="configs/e1.yaml,configs/e1-ow.yaml")
+    x = sub.add_parser("export-tables")
+    x.add_argument("--configs", default="configs/e1.yaml,configs/e1-ow.yaml")
+    x.add_argument("--battery", default="runs/battery,runs/battery-gemini")
+    x.add_argument("--coding", default="runs/notes-coding")
+    x.add_argument("--out", default="results/e1")
+    h = sub.add_parser("hand-bundle")
+    h.add_argument("--configs", default="configs/e1.yaml,configs/e1-ow.yaml")
+    h.add_argument("--out", default="runs/hand-coding")
+    h.add_argument("--n", type=int, default=60)
+    h.add_argument("--seed", type=int, default=0)
+    h = sub.add_parser("hand-report")
+    h.add_argument("--dir", default="runs/hand-coding")
+    h.add_argument("--coders", default="runs/notes-coding/codes-deepseek-v4-flash.jsonl,runs/notes-coding/codes-gemini.jsonl")
     for name in ("notes-code", "notes-code-report"):
         n = sub.add_parser(name)
         n.add_argument("--configs", default="configs/e1.yaml,configs/e1-ow.yaml")
@@ -66,6 +80,17 @@ def main() -> None:
     args = parser.parse_args()
     if args.cmd == "vignette-report":
         print("\n".join(analysis.vignette_report(Path(args.run))))
+        return
+    if args.cmd == "hand-report":
+        print("\n".join(notes_coding.human_report(Path(args.dir), [Path(p) for p in args.coders.split(",")])))
+        return
+    if args.cmd in ("export-tables", "hand-bundle"):
+        cfgs = [yaml.safe_load(Path(p).read_text()) for p in args.configs.split(",")]
+        if args.cmd == "hand-bundle":
+            print(json.dumps(notes_coding.bundle(cfgs, Path(args.out), args.n, args.seed)))
+        else:
+            folders = [Path(p) for p in args.battery.split(",")]
+            print(json.dumps(export.tables(cfgs, Path(args.out), folders, Path(args.coding))))
         return
     specs = yaml.safe_load(Path(args.observers_file).read_text())
     cfg = yaml.safe_load(Path(args.config).read_text()) if "config" in args else {}
@@ -105,6 +130,8 @@ def main() -> None:
                                            ("api_key_env", args.api_key_env)) if v})
             print(json.dumps(battery.run({args.reader: spec}, srcs, responses)))
             print(json.dumps(battery.execute(srcs, responses, executions, args.exec_workers)))
+            if args.lenient:
+                print(json.dumps(battery.execute(srcs, responses, out / battery.LENIENT, args.exec_workers, ("prose",))))
         print("\n".join(battery.report(srcs, responses, executions)))
         return
     if args.cmd == "chain-report":

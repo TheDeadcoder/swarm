@@ -50,3 +50,11 @@ def test_potency_report_runs_h1_and_h2(tmp_path):
     no_anchor = [r for r in rows if r["arm"] != "positive"]
     (tmp_path / "potency.jsonl").write_text("".join(json.dumps(r) + "\n" for r in no_anchor))
     assert "H2: not estimable" in "\n".join(analysis.potency_report(tmp_path))
+
+
+def test_signflip_is_exact_and_handles_many_pairs():
+    diffs = [0.25, -0.5, 1 / 3, 0.75, 0.0, -1 / 12, 0.5]
+    brute = sum(sum(d if m >> i & 1 else -d for i, d in enumerate(diffs)) >= sum(diffs) - 1e-12
+                for m in range(2 ** len(diffs))) / 2 ** len(diffs)
+    assert analysis.signflip(diffs) == pytest.approx(brute)
+    assert analysis.signflip([k / 12 for k in range(1, 33)]) == 1 / 2 ** 32

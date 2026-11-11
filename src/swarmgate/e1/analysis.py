@@ -96,10 +96,15 @@ def vignette_report(run_dir: Path, primary: str = "codes-gemini.jsonl", second: 
 
 
 def signflip(diffs: list[float]) -> float:
+    sums = Counter({0.0: 1})
+    for d in diffs:
+        step = Counter()
+        for s, c in sums.items():
+            step[round(s + d, 9)] += c
+            step[round(s - d, 9)] += c
+        sums = step
     observed = sum(diffs)
-    hits = sum(sum(d if mask >> i & 1 else -d for i, d in enumerate(diffs)) >= observed - 1e-12
-               for mask in range(2 ** len(diffs)))
-    return hits / 2 ** len(diffs)
+    return sum(c for s, c in sums.items() if s >= observed - 1e-9) / 2 ** len(diffs)
 
 
 def bootstrap(samples: list[list[float]], stat, reps: int = 10000, seed: int = 0) -> tuple[float, float]:
