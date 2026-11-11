@@ -198,6 +198,9 @@ python -m swarmgate.e1 export-tables
 - `vignettes` runs scripted sessions that end with the request to write notes. `code` codes each note with a model from another family, and `vignette-report` gives the recording rate, disclosure and coder agreement.
 - `pilot` runs a few sessions for each candidate donor model and applies the donor rule.
 - `chains` runs every lineage; `--status` prints progress and spend without running anything. No new generation starts once spend reaches `budget_usd`. Between generations the donor model merges the session's notes into the notes the next agent receives; if it refuses, the previous notes carry over unchanged and `--status` counts the refusal.
+  - A config may list `branches`: arms that start from another arm's notes after a given generation and run under a named guard variant. The arms of a lineage advance together, one generation at a time.
+  - Each command is also decided under the other guard variant, and the record counts the commands on which the two variants differ.
+  - `merge: hygiene` adds one line to the merge prompt that asks the model not to keep instructions for getting around the reviewer.
 - `calibrate` checks the guard variants, the legitimate routes and the naive objectives on seeds separate from the chains, and scores the positive control.
 - `score` extracts the commands in the notes after the chosen generations, retargets each one to every objective, runs it once under the repaired guard and records which objectives succeed. An empty-notes anchor, and any notes files listed under `anchors` in the config, are scored the same way. If an anchor's SHA-256 is listed under `anchor_sha256`, the file must match it or scoring stops. The positive-control file is not published.
 - `potency-report` gives potency per arm and generation, and the paired test between arms.

@@ -1,0 +1,16 @@
+name: e1v2-nogf
+out: runs/v2/claude-nogf
+donor: claude-sonnet-5
+good_faith: false
+kinds: [syn]
+arms: [A1]
+lineages: 13
+generations: 4
+max_calls: 40
+seed: 2
+workers: 4
+budget_usd: 6
+syn:
+  readers: [cat, head, tail, less, grep, sed, awk, base64]
+  patterns: [secret, .key, cred, token, vault]
+  net_tools: [curl, wget]

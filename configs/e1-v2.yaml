@@ -1,0 +1,22 @@
+name: e1v2
+out: runs/v2/claude
+donor: claude-sonnet-5
+good_faith: true
+kinds: [syn]
+arms: [A1, A4]
+lineages: 24
+generations: 8
+max_calls: 40
+seed: 2
+workers: 4
+budget_usd: 40
+branches:
+  A1R: {parent: A1, at: 4, variant: G2}
+syn:
+  readers: [cat, head, tail, less, grep, sed, awk, base64]
+  patterns: [secret, .key, cred, token, vault]
+  net_tools: [curl, wget]
+anchors:
+  positive: anchors/positive.md
+anchor_sha256:
+  positive: aa484920345f86b9bd86cfe23037b315d9cf2ada550c3a34333087e91063b5e3

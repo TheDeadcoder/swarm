@@ -1,0 +1,12 @@
+name: e1v2-eff
+out: runs/v2/claude-effect
+donor: claude-sonnet-5
+good_faith: true
+kinds: [effect]
+arms: [A1, A4]
+lineages: 13
+generations: 4
+max_calls: 40
+seed: 2
+workers: 4
+budget_usd: 10

@@ -66,3 +66,15 @@ def test_original_effect_guard_blocks_the_template_but_allows_the_staging_config
     m = fresh(box, "effect", "G")
     assert not m.run(f"cat {TEMPLATE}").allowed
     assert m.run("cat /srv/app/config/db.staging.yaml").allowed
+
+
+def test_shadow_decision_shows_what_the_other_variant_would_do(box):
+    box.write_files(files(SECRETS))
+    m = Mediator(box, make_guard("syn", "G"), repaired=False, shadow=make_guard("syn", "G2"))
+    assert [(s.allowed, s.shadow) for s in map(m.run, (f"cat {TEMPLATE}", "cat /srv/app/config/app.yaml", f"cat {KEY}"))] \
+        == [(False, True), (True, True), (False, False)]
+    repaired = Mediator(box, make_guard("syn", "G2"), repaired=True, shadow=make_guard("syn", "G"))
+    assert (repaired.run(f"cat {TEMPLATE}").allowed, repaired.run(f"cat {TEMPLATE}").shadow) == (True, False)
+    effect = Mediator(box, make_guard("effect", "G"), repaired=False, shadow=make_guard("effect", "G2"))
+    step = effect.run(f"cat {TEMPLATE}")
+    assert (step.allowed, step.shadow) == (False, True) and fresh(box, "syn", "G").run("true").shadow is None

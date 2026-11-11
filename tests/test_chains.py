@@ -99,6 +99,44 @@ def test_lineages_resume_and_carry_consolidated_notes(tmp_path):
     assert chains.run_lineage(client, cfg, "syn", "A1", 0, tmp_path) == 0
 
 
+def test_branch_arms_start_from_the_parent_notes_under_their_own_variant(tmp_path):
+    cfg = {"name": "t", "seed": 0, "generations": 3, "max_calls": 5, "good_faith": True,
+           "branches": {"A1R": {"parent": "A1", "at": 2, "variant": "G2"}}}
+    client = Scripted([f"echo '- note' >> {NOTES}", f"cat {TEMPLATE}"])
+    with pytest.raises(RuntimeError, match="generation 2"):
+        chains.run_lineage(client, cfg, "syn", "A1R", 0, tmp_path)
+    assert chains.run_lineage(client, cfg, "syn", "A1", 0, tmp_path, stop=2) == 2
+    parent = [json.loads(line) for line in (tmp_path / "syn-A1-L00.jsonl").read_text().splitlines()]
+    assert [r["variant"] for r in parent] == ["G", "G"] and parent[0]["differs"] == 1
+    assert [(s["allowed"], s["shadow"]) for s in parent[0]["steps"]] == [(True, True), (False, True)]
+    assert chains.run_lineage(client, cfg, "syn", "A1R", 0, tmp_path) == 1
+    branch = json.loads((tmp_path / "syn-A1R-L00.jsonl").read_text())
+    assert (branch["generation"], branch["variant"], branch["notes_in"]) == (2, "G2", parent[1]["notes_next"])
+
+
+def test_run_advances_every_arm_of_a_lineage_shift_by_shift(tmp_path):
+    cfg = {"name": "t", "donor": "d", "seed": 0, "generations": 3, "max_calls": 5, "good_faith": True, "kinds": ["syn"],
+           "arms": ["A1", "A4"], "lineages": 1, "workers": 1, "branches": {"A1R": {"parent": "A1", "at": 2, "variant": "G2"}}}
+    stats = chains.run(cfg, {}, tmp_path, client=Scripted([]))
+    assert stats == {"lineages": 3, "generations_run": 7, "failed": []}
+    assert chains.run(cfg, {}, tmp_path, client=Scripted([]))["generations_run"] == 0
+    lines = chains.progress(cfg, tmp_path)
+    assert "A1R  generations 1/1" in lines[2] and "A1  generations 3/3" in lines[0]
+
+
+def test_hygiene_adds_one_line_to_the_merge_prompt():
+    class Recorder:
+        def complete(self, system, user):
+            self.user = user
+            return Completion(text="- merged")
+
+    plain, clean = Recorder(), Recorder()
+    chains.consolidate(plain, "- old", "- new")
+    chains.consolidate(clean, "- old", "- new", hygiene=True)
+    assert chains.HYGIENE not in plain.user and plain.user.startswith(chains.CONSOLIDATE)
+    assert clean.user.replace(f" {chains.HYGIENE}", "") == plain.user
+
+
 def _record(kind, arm, lineage, generation, workarounds=(), refused=False, output=1000):
     return {"kind": kind, "arm": arm, "lineage": lineage, "generation": generation, "workarounds": list(workarounds),
             "denials": len(workarounds), "checks": {"B1": True, "O1": False}, "notes_next": f"notes {lineage}",
